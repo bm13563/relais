@@ -11,6 +11,7 @@ import asyncio
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -108,107 +109,6 @@ class PipelineOrchestrator:
     3. Extract routing data from tool results
     4. Apply routing rules to determine next step
     5. Persist state to SQLiteben@ben-Inspiron-3505:~/Documents/GitHub/tdl-ai$ uv run pipelines/eda.py
-INFO: Creating pipeline 'eda' with 2 steps
-INFO: Created tool registry: eda_tools
-INFO: Registering tool: explore_data
-INFO: Registering tool: run_query
-INFO: Registering pipeline 'eda' with 2 steps
-INFO: Pipeline 'eda' created successfully
-INFO: Starting pipeline 'eda'
-INFO: Created pipeline run: 1ae45583-0b97-48ba-8375-53ab8efaec7d
-INFO: Creating MCP server 'eda_tools' v1.0.0 with 2 tools
-INFO: [1ae45583-0b97-48ba-8375-53ab8efaec7d] Beginning pipeline execution from 'explore_data'
-INFO: Created main session client: model=opus, allowed_tools=['mcp__eda_tools__explore_data']
-INFO: [1ae45583-0b97-48ba-8375-53ab8efaec7d] === Step 1: 'explore_data' ===
-INFO: [1ae45583-0b97-48ba-8375-53ab8efaec7d] Running in MAIN session (persistent)
-INFO: SDK options: max_turns=2, allowed_tools=['mcp__eda_tools__explore_data']
-
-[explore_data] I'll start the exploratory data analysis by verifying the database connection works. Let me begin with a simple query to test the connection.
-INFO: Tool call: mcp__eda_tools__explore_data (id=toolu_01Bd6Vkw6Nb32mAKtBCHcuzh)
-
-[explore_data] Tool: mcp__eda_tools__explore_data
-  Input: {'query_request': 'return the number 1 as a simple test', 'query_intent': 'Verify the database connection is working with the simplest possible query'}
-
-[explore_data] The query request has been submitted. The database connection test has been initiated - waiting for the next step to convert this to SQL and execute it.
-INFO: Result: turns=2, error=False
-
-[DEBUG] Usage dict: {'input_tokens': 2, 'cache_creation_input_tokens': 183, 'cache_read_input_tokens': 36810, 'output_tokens': 164, 'server_tool_use': {'web_search_requests': 0, 'web_fetch_requests': 0}, 'service_tier': 'standard', 'cache_creation': {'ephemeral_1h_input_tokens': 0, 'ephemeral_5m_input_tokens': 183}}
-[explore_data] Tokens: 2 in / 164 out
-INFO: [1ae45583-0b97-48ba-8375-53ab8efaec7d] Step completed - turns=2, reason=success
-INFO: [1ae45583-0b97-48ba-8375-53ab8efaec7d] Routing: 'explore_data' -> 'run_query'
-INFO: [1ae45583-0b97-48ba-8375-53ab8efaec7d] === Step 2: 'run_query' ===
-INFO: [1ae45583-0b97-48ba-8375-53ab8efaec7d] Running as SUBAGENT (isolated)
-INFO: Spawning subagent b29245c3-53ba-42d9-a71d-e5070e4a7a7c for 'run_query'
-INFO: Subagent options: max_turns=2, model=opus, allowed_tools=['mcp__eda_tools__run_query'], thinking=False
-^CERROR: Pipeline execution failed: Attempted to exit a cancel scope that isn't the current tasks's current cancel scope
-Traceback (most recent call last):
-  File "/home/ben/Documents/GitHub/relais/src/relais/executor.py", line 245, in _execute_pipeline
-    result = await self._execute_subagent_step(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/ben/Documents/GitHub/relais/src/relais/executor.py", line 473, in _execute_subagent_step
-    async with ClaudeSDKClient(options=options) as client:
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/ben/Documents/GitHub/tdl-ai/.venv/lib/python3.12/site-packages/claude_agent_sdk/client.py", line 371, in __aenter__
-    await self.connect()
-  File "/home/ben/Documents/GitHub/tdl-ai/.venv/lib/python3.12/site-packages/claude_agent_sdk/client.py", line 164, in connect
-    await self._query.initialize()
-  File "/home/ben/Documents/GitHub/tdl-ai/.venv/lib/python3.12/site-packages/claude_agent_sdk/_internal/query.py", line 153, in initialize
-    response = await self._send_control_request(
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/ben/Documents/GitHub/tdl-ai/.venv/lib/python3.12/site-packages/claude_agent_sdk/_internal/query.py", line 371, in _send_control_request
-    await event.wait()
-  File "/home/ben/Documents/GitHub/tdl-ai/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1789, in wait
-    await self._event.wait()
-  File "/usr/lib/python3.12/asyncio/locks.py", line 212, in wait
-    await fut
-asyncio.exceptions.CancelledError
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/home/ben/Documents/GitHub/tdl-ai/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 787, in __aexit__
-    raise exc_val
-  File "/home/ben/Documents/GitHub/tdl-ai/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 755, in __aexit__
-    await self._on_completed_fut
-asyncio.exceptions.CancelledError: Cancelled via cancel scope 7fab58b95f10 by <Task cancelling name='Task-1' coro=<PipelineOrchestrator._start_pipeline_async() running at /home/ben/Documents/GitHub/relais/src/relais/executor.py:189> cb=[_run_until_complete_cb() at /usr/lib/python3.12/asyncio/base_events.py:181]>
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/home/ben/Documents/GitHub/tdl-ai/pipelines/eda.py", line 70, in <module>
-    main()
-  File "/home/ben/Documents/GitHub/tdl-ai/pipelines/eda.py", line 57, in main
-    run_id = pipeline.run("Begin exploratory data analysis")
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/ben/Documents/GitHub/relais/src/relais/pipeline.py", line 248, in run
-    return self.orchestrator.start_pipeline(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/ben/Documents/GitHub/relais/src/relais/executor.py", line 163, in start_pipeline
-    return asyncio.run(self._start_pipeline_async(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.12/asyncio/runners.py", line 195, in run
-    return runner.run(main)
-           ^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
-    return self._loop.run_until_complete(task)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
-    return future.result()
-           ^^^^^^^^^^^^^^^
-  File "/home/ben/Documents/GitHub/relais/src/relais/executor.py", line 189, in _start_pipeline_async
-    await self._execute_pipeline(run_id, config, initial_input, args or {})
-  File "/home/ben/Documents/GitHub/relais/src/relais/executor.py", line 289, in _execute_pipeline
-    await main_client.disconnect()
-  File "/home/ben/Documents/GitHub/tdl-ai/.venv/lib/python3.12/site-packages/claude_agent_sdk/client.py", line 365, in disconnect
-    await self._query.close()
-  File "/home/ben/Documents/GitHub/tdl-ai/.venv/lib/python3.12/site-packages/claude_agent_sdk/_internal/query.py", line 609, in close
-    await self._tg.__aexit__(None, None, None)
-  File "/home/ben/Documents/GitHub/tdl-ai/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 789, in __aexit__
-    if self.cancel_scope.__exit__(type(exc), exc, exc.__traceback__):
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/ben/Documents/GitHub/tdl-ai/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 469, in __exit__
-    raise RuntimeError(
-RuntimeError: Attempted to exit a cancel scope that isn't the current tasks's current cancel scope
     6. Repeat until pipeline ends
     """
 
@@ -236,6 +136,7 @@ RuntimeError: Attempted to exit a cancel scope that isn't the current tasks's cu
         self.cwd = cwd
         self.pipelines: Dict[str, PipelineConfig] = {}
         self.log = get_logger('orchestrator')
+        self.context_log_path = Path("pipeline.context")
 
     def register_pipeline(self, config: PipelineConfig) -> None:
         """Register a pipeline configuration."""
@@ -310,6 +211,15 @@ RuntimeError: Attempted to exit a cancel scope that isn't the current tasks's cu
         previous_result = None
         step_count = 0
 
+        # Clear/create context log file for this pipeline run
+        try:
+            with open(self.context_log_path, 'w', encoding='utf-8') as f:
+                f.write(f"Pipeline Context Log - Run ID: {run_id}\n")
+                f.write(f"Pipeline: {config.name}\n")
+                f.write(f"Started at: {datetime.now().isoformat()}\n")
+        except Exception as e:
+            self.log.warning(f"Failed to initialize context log: {e}")
+
         # Create MCP server with registered tools
         mcp_server = self.tool_registry.create_mcp_server()
 
@@ -337,6 +247,9 @@ RuntimeError: Attempted to exit a cancel scope that isn't the current tasks's cu
                     instructions_dir=Path(config.instructions_dir),
                     config=config
                 )
+
+                # Log full context for debugging
+                self._log_step_context(current_step_name, context, step_count)
 
                 # Execute step
                 if step.subagent:
@@ -438,6 +351,9 @@ RuntimeError: Attempted to exit a cancel scope that isn't the current tasks's cu
         The client maintains conversation history across steps, so the model
         remembers previous interactions.
         """
+        # Set current step for tool validation
+        self.tool_registry.set_current_step(step.name, step.tools or [])
+
         allowed_tools = self.tool_registry.get_allowed_tools(step.tools)
 
         self.log.info(f"SDK options: max_turns={step.max_turns}, allowed_tools={allowed_tools}")
@@ -530,6 +446,9 @@ RuntimeError: Attempted to exit a cancel scope that isn't the current tasks's cu
         Note: We use ClaudeSDKClient instead of query() because query() does NOT
         support custom MCP tools - only ClaudeSDKClient does.
         """
+        # Set current step for tool validation
+        self.tool_registry.set_current_step(step.name, step.tools or [])
+
         subagent_id = str(uuid.uuid4())
         self.log.info(f"Spawning subagent {subagent_id} for '{step.name}'")
 
@@ -701,6 +620,14 @@ RuntimeError: Attempted to exit a cancel scope that isn't the current tasks's cu
                 if isinstance(output, str) and "requested permissions to use" in output:
                     self.log.debug(f"Skipping permission error output for routing: {result.get('tool')}")
                     continue
+                # Skip tool validation errors (tools called from wrong pipeline step)
+                if isinstance(output, dict) and "content" in output:
+                    content = output.get("content", [])
+                    if content and isinstance(content[0], dict):
+                        text = content[0].get("text", "")
+                        if "is only available in specific pipeline steps" in text:
+                            self.log.debug(f"Skipping tool validation error for routing: {result.get('tool')}")
+                            continue
                 last_result = result
                 break
 
@@ -734,3 +661,22 @@ RuntimeError: Attempted to exit a cancel scope that isn't the current tasks's cu
                 except json.JSONDecodeError:
                     return {"response": item.get("text")}
         return None
+
+    def _log_step_context(self, step_name: str, context: str, step_num: int) -> None:
+        """Log the full context being sent to a step for debugging.
+
+        Args:
+            step_name: Name of the step
+            context: The full context string
+            step_num: The step number in the pipeline
+        """
+        try:
+            with open(self.context_log_path, 'a', encoding='utf-8') as f:
+                separator = "=" * 80
+                f.write(f"\n{separator}\n")
+                f.write(f"STEP {step_num}: {step_name}\n")
+                f.write(f"{separator}\n\n")
+                f.write(context)
+                f.write(f"\n\n{separator}\n\n")
+        except Exception as e:
+            self.log.warning(f"Failed to write context log: {e}")

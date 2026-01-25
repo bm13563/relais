@@ -421,3 +421,181 @@ class TestToolExecution:
         asyncio.run(capture({"key": "value", "num": 42}))
 
         assert received_args == {"key": "value", "num": 42}
+
+
+class TestStepValidation:
+    """Tests for step-based tool access validation."""
+
+    @patch('relais.tools.sdk_tool')
+    def test_set_current_step_with_string_tools(self, mock_sdk_tool):
+        """Test setting current step with string tool names."""
+        mock_sdk_tool.return_value = lambda f: MagicMock()
+
+        registry = ToolRegistry("test")
+
+        @registry.tool("tool_a", "Tool A")
+        async def tool_a(args: dict) -> dict:
+            return {"content": []}
+
+        @registry.tool("tool_b", "Tool B")
+        async def tool_b(args: dict) -> dict:
+            return {"content": []}
+
+        registry.set_current_step("step1", ["tool_a"])
+
+        assert registry._current_step_name == "step1"
+        assert registry._current_allowed_tools == {"tool_a"}
+
+    @patch('relais.tools.sdk_tool')
+    def test_set_current_step_with_function_references(self, mock_sdk_tool):
+        """Test setting current step with @tool decorated function references."""
+        from relais.tools import tool
+
+        mock_sdk_tool.return_value = lambda f: MagicMock()
+
+        registry = ToolRegistry("test")
+
+        @registry.tool("tool_a", "Tool A")
+        async def tool_a(args: dict) -> dict:
+            return {"content": []}
+
+        # Create standalone @tool decorated function
+        @tool("tool_a", "Tool A")
+        async def standalone_a(args: dict) -> dict:
+            return {"content": []}
+
+        registry.set_current_step("step1", [standalone_a])
+
+        assert registry._current_step_name == "step1"
+        assert registry._current_allowed_tools == {"tool_a"}
+
+    @patch('relais.tools.sdk_tool')
+    def test_is_tool_allowed(self, mock_sdk_tool):
+        """Test checking if a tool is allowed in current step."""
+        mock_sdk_tool.return_value = lambda f: MagicMock()
+
+        registry = ToolRegistry("test")
+
+        @registry.tool("allowed", "Allowed")
+        async def allowed(args: dict) -> dict:
+            return {"content": []}
+
+        @registry.tool("not_allowed", "Not allowed")
+        async def not_allowed(args: dict) -> dict:
+            return {"content": []}
+
+        registry.set_current_step("step1", ["allowed"])
+
+        assert registry.is_tool_allowed("allowed") is True
+        assert registry.is_tool_allowed("not_allowed") is False
+
+    @patch('relais.tools.sdk_tool')
+    def test_tool_validation_blocks_unauthorized_call(self, mock_sdk_tool):
+        """Test that tool validation blocks unauthorized tool calls."""
+        # Make sdk_tool return the function itself for testing
+        mock_sdk_tool.return_value = lambda f: f
+
+        registry = ToolRegistry("test")
+
+        execution_count = {"count": 0}
+
+        @registry.tool("protected", "Protected tool")
+        async def protected(name: Annotated[str, "Name"]) -> dict:
+            execution_count["count"] += 1
+            return {"content": [{"type": "text", "text": f"Hello {name}"}]}
+
+        # Set current step without this tool
+        registry.set_current_step("other_step", [])
+
+        # Try to call the tool - should be blocked
+        result = asyncio.run(protected({"name": "Alice"}))
+
+        # Verify tool was NOT executed
+        assert execution_count["count"] == 0
+
+        # Verify error message format
+        assert "content" in result
+        assert len(result["content"]) == 1
+        assert result["content"][0]["type"] == "text"
+        assert "only available in specific pipeline steps" in result["content"][0]["text"]
+        assert "other_step" in result["content"][0]["text"]
+
+    @patch('relais.tools.sdk_tool')
+    def test_tool_validation_allows_authorized_call(self, mock_sdk_tool):
+        """Test that tool validation allows authorized tool calls."""
+        mock_sdk_tool.return_value = lambda f: f
+
+        registry = ToolRegistry("test")
+
+        execution_count = {"count": 0}
+
+        @registry.tool("allowed", "Allowed tool")
+        async def allowed(name: Annotated[str, "Name"]) -> dict:
+            execution_count["count"] += 1
+            return {"content": [{"type": "text", "text": f"Hello {name}"}]}
+
+        # Set current step WITH this tool
+        registry.set_current_step("correct_step", ["allowed"])
+
+        # Call the tool - should succeed
+        result = asyncio.run(allowed({"name": "Bob"}))
+
+        # Verify tool WAS executed
+        assert execution_count["count"] == 1
+
+        # Verify normal result
+        assert result["content"][0]["text"] == "Hello Bob"
+
+    @patch('relais.tools.sdk_tool')
+    def test_tool_validation_with_multiple_allowed_tools(self, mock_sdk_tool):
+        """Test tool validation with multiple tools allowed in a step."""
+        mock_sdk_tool.return_value = lambda f: f
+
+        registry = ToolRegistry("test")
+
+        @registry.tool("tool_a", "Tool A")
+        async def tool_a(args: dict) -> dict:
+            return {"content": [{"type": "text", "text": "A"}]}
+
+        @registry.tool("tool_b", "Tool B")
+        async def tool_b(args: dict) -> dict:
+            return {"content": [{"type": "text", "text": "B"}]}
+
+        @registry.tool("tool_c", "Tool C")
+        async def tool_c(args: dict) -> dict:
+            return {"content": [{"type": "text", "text": "C"}]}
+
+        # Allow only tool_a and tool_b
+        registry.set_current_step("step1", ["tool_a", "tool_b"])
+
+        # tool_a and tool_b should work
+        result_a = asyncio.run(tool_a({}))
+        assert result_a["content"][0]["text"] == "A"
+
+        result_b = asyncio.run(tool_b({}))
+        assert result_b["content"][0]["text"] == "B"
+
+        # tool_c should be blocked
+        result_c = asyncio.run(tool_c({}))
+        assert "only available in specific pipeline steps" in result_c["content"][0]["text"]
+
+    @patch('relais.tools.sdk_tool')
+    def test_set_current_step_with_empty_tools(self, mock_sdk_tool):
+        """Test setting current step with no allowed tools."""
+        mock_sdk_tool.return_value = lambda f: f
+
+        registry = ToolRegistry("test")
+
+        @registry.tool("any_tool", "Any tool")
+        async def any_tool(args: dict) -> dict:
+            return {"content": [{"type": "text", "text": "result"}]}
+
+        # Set step with no allowed tools
+        registry.set_current_step("restricted_step", [])
+
+        # No tools should be allowed
+        assert registry.is_tool_allowed("any_tool") is False
+
+        # Tool call should be blocked
+        result = asyncio.run(any_tool({}))
+        assert "only available in specific pipeline steps" in result["content"][0]["text"]

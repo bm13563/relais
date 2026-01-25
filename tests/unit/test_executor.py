@@ -498,6 +498,75 @@ class TestExtractRoutingData:
 
         assert result == {"order": 3}
 
+    def test_extract_skips_permission_errors(self):
+        """Test that permission error messages are skipped when extracting routing data."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+
+        tool_results = [
+            {"tool": "allowed", "output": '{"status": "ok"}'},
+            {"tool": "unauthorized", "output": "The user requested permissions to use this tool but..."}
+        ]
+        result = orchestrator._extract_routing_data(tool_results)
+
+        # Should use first tool's output, skipping permission error
+        assert result == {"status": "ok"}
+
+    def test_extract_skips_tool_validation_errors(self):
+        """Test that tool validation errors (wrong step) are skipped when extracting routing data."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+
+        tool_results = [
+            {"tool": "correct", "output": {"content": [{"type": "text", "text": '{"result": "success"}'}]}},
+            {"tool": "wrong_step", "output": {"content": [{"type": "text", "text": "Tool 'wrong_step' is only available in specific pipeline steps. Current step: other_step. This tool is not allowed here."}]}}
+        ]
+        result = orchestrator._extract_routing_data(tool_results)
+
+        # Should use first tool's output, skipping validation error
+        assert result == {"result": "success"}
+
+    def test_extract_returns_none_when_only_validation_errors(self):
+        """Test that None is returned when only validation errors exist."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+
+        tool_results = [
+            {"tool": "wrong1", "output": {"content": [{"type": "text", "text": "Tool 'wrong1' is only available in specific pipeline steps. Current step: step1. This tool is not allowed here."}]}},
+            {"tool": "wrong2", "output": {"content": [{"type": "text", "text": "Tool 'wrong2' is only available in specific pipeline steps. Current step: step1. This tool is not allowed here."}]}}
+        ]
+        result = orchestrator._extract_routing_data(tool_results)
+
+        # Should return None since all outputs are validation errors
+        assert result is None
+
+    def test_extract_skips_multiple_error_types(self):
+        """Test skipping both permission and validation errors."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+
+        tool_results = [
+            {"tool": "good", "output": {"content": [{"type": "text", "text": '{"final": "data"}'}]}},
+            {"tool": "perm_error", "output": "The user requested permissions to use"},
+            {"tool": "validation_error", "output": {"content": [{"type": "text", "text": "Tool 'x' is only available in specific pipeline steps. Current step: y. This tool is not allowed here."}]}}
+        ]
+        result = orchestrator._extract_routing_data(tool_results)
+
+        # Should use the good tool's output
+        assert result == {"final": "data"}
+
 
 class TestStartPipeline:
     """Tests for start_pipeline method."""
@@ -543,6 +612,60 @@ class TestStartPipeline:
 
 class TestExecuteMainStep:
     """Tests for _execute_main_step method."""
+
+    @pytest.mark.asyncio
+    async def test_execute_main_step_sets_current_step(self):
+        """Test that main step execution sets current step for tool validation."""
+        mock_registry = MagicMock()
+        mock_registry.get_allowed_tools.return_value = ["mcp__test__tool1"]
+        mock_registry.name = "test"
+
+        orchestrator = PipelineOrchestrator(
+            tool_registry=mock_registry,
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+
+        step = PipelineStep(
+            name="test_step",
+            instruction="test",
+            max_turns=2,
+            tools=["tool1", "tool2"]
+        )
+
+        config = PipelineConfig(
+            name="test",
+            steps={"test_step": step},
+            start_step="test_step",
+            instructions_dir="/instructions"
+        )
+
+        with patch('relais.executor.ClaudeSDKClient') as mock_sdk_class:
+            mock_client = MagicMock()
+
+            async def mock_query(prompt):
+                pass
+            mock_client.query = mock_query
+
+            async def mock_receive():
+                result_msg = MagicMock()
+                result_msg.num_turns = 1
+                result_msg.session_id = "session-1"
+                result_msg.is_error = False
+                type(result_msg).__name__ = "ResultMessage"
+                yield result_msg
+
+            mock_client.receive_response.return_value = mock_receive()
+
+            await orchestrator._execute_main_step(
+                step=step,
+                context="Test",
+                client=mock_client,
+                config=config
+            )
+
+            # Verify set_current_step was called with correct args
+            mock_registry.set_current_step.assert_called_once_with("test_step", ["tool1", "tool2"])
 
     @pytest.mark.asyncio
     async def test_execute_main_step_creates_options(self):
@@ -612,6 +735,61 @@ class TestExecuteMainStep:
 
 class TestExecuteSubagentStep:
     """Tests for _execute_subagent_step method."""
+
+    @pytest.mark.asyncio
+    async def test_subagent_sets_current_step(self):
+        """Test that subagent execution sets current step for tool validation."""
+        mock_registry = MagicMock()
+        mock_registry.get_allowed_tools.return_value = ["mcp__test__research_tool"]
+        mock_registry.name = "test"
+
+        orchestrator = PipelineOrchestrator(
+            tool_registry=mock_registry,
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+
+        step = PipelineStep(
+            name="research_step",
+            instruction="test",
+            max_turns=5,
+            tools=["research_tool"],
+            subagent=True
+        )
+
+        config = PipelineConfig(
+            name="test",
+            steps={"research_step": step},
+            start_step="research_step",
+            instructions_dir="/instructions"
+        )
+
+        with patch('relais.executor.ClaudeSDKClient') as mock_sdk_class:
+            mock_client = MagicMock()
+            mock_sdk_class.return_value.__aenter__.return_value = mock_client
+
+            async def mock_query(prompt):
+                pass
+            mock_client.query = mock_query
+
+            async def mock_receive():
+                result_msg = MagicMock()
+                result_msg.num_turns = 2
+                type(result_msg).__name__ = "ResultMessage"
+                yield result_msg
+
+            mock_client.receive_response.return_value = mock_receive()
+
+            await orchestrator._execute_subagent_step(
+                step=step,
+                context="Research",
+                mcp_server=MagicMock(),
+                run_id="run-123",
+                config=config
+            )
+
+            # Verify set_current_step was called with correct args
+            mock_registry.set_current_step.assert_called_once_with("research_step", ["research_tool"])
 
     @pytest.mark.asyncio
     async def test_subagent_logs_to_db(self):

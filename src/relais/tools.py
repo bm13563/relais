@@ -10,6 +10,7 @@ from typing import (
     Callable,
     Dict,
     List,
+    Optional,
     get_args,
     get_origin,
     get_type_hints,
@@ -161,15 +162,17 @@ def _extract_schema_from_signature(func: Callable) -> dict:
     return schema
 
 
-def _create_args_wrapper(func: Callable) -> Callable:
+def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_name: str = None) -> Callable:
     """Create a wrapper that converts dict args to keyword arguments.
 
     The SDK expects tools to have signature: async def tool(args: dict) -> dict
     But we want users to define tools with proper parameters.
-    This wrapper bridges the gap.
+    This wrapper bridges the gap and validates tool access.
 
     Args:
         func: The function with proper parameter signature
+        registry: Optional ToolRegistry for step validation
+        tool_name: Optional tool name for validation
 
     Returns:
         A wrapper function with (args: dict) -> dict signature
@@ -189,6 +192,18 @@ def _create_args_wrapper(func: Callable) -> Callable:
 
     @functools.wraps(func)
     async def wrapper(args: dict) -> dict:
+        # Validate tool access if registry provided
+        if registry and tool_name:
+            if not registry.is_tool_allowed(tool_name):
+                error_msg = f"Tool '{tool_name}' is only available in specific pipeline steps. Current step: {registry._current_step_name}. This tool is not allowed here."
+                log.warning(f"Blocked unauthorized tool call: {tool_name} in step {registry._current_step_name}")
+                return {
+                    "content": [{
+                        "type": "text",
+                        "text": error_msg
+                    }]
+                }
+
         # Extract values from args dict and pass as keyword arguments
         kwargs = {name: args.get(name) for name in param_names if name in args}
         return await func(**kwargs)
@@ -305,6 +320,8 @@ class ToolRegistry:
         self._name = name
         self._tools: Dict[str, ToolDefinition] = {}
         self._sdk_tools: List[Any] = []
+        self._current_step_name: Optional[str] = None
+        self._current_allowed_tools: set = set()
         log.info(f"Created tool registry: {name}")
 
     def tool(
@@ -346,8 +363,8 @@ class ToolRegistry:
             log.info(f"Registering tool: {name}")
             log.debug(f"Tool schema: {schema}")
 
-            # Wrap function to convert dict args to keyword arguments
-            wrapped = _create_args_wrapper(func)
+            # Wrap function to convert dict args to keyword arguments and validate access
+            wrapped = _create_args_wrapper(func, registry=self, tool_name=name)
 
             # Create SDK tool using the @tool decorator
             decorated = sdk_tool(name, description, schema)(wrapped)
@@ -392,8 +409,8 @@ class ToolRegistry:
         log.info(f"Registering tool: {name}")
         log.debug(f"Tool schema: {schema}")
 
-        # Wrap function to convert dict args to keyword arguments
-        wrapped = _create_args_wrapper(func)
+        # Wrap function to convert dict args to keyword arguments and validate access
+        wrapped = _create_args_wrapper(func, registry=self, tool_name=name)
 
         # Create SDK tool using the @tool decorator
         decorated = sdk_tool(name, description, schema)(wrapped)
@@ -457,6 +474,38 @@ class ToolRegistry:
             version=version,
             tools=self._sdk_tools
         )
+
+    def set_current_step(self, step_name: str, allowed_tools: List) -> None:
+        """Set the current executing step and its allowed tools.
+
+        Args:
+            step_name: Name of the step being executed
+            allowed_tools: List of tool names or @tool functions allowed in this step
+        """
+        self._current_step_name = step_name
+
+        # Extract tool names from the allowed_tools list
+        tool_names = set()
+        for item in allowed_tools:
+            # Handle @tool decorated functions
+            if callable(item) and hasattr(item, '_tool_name'):
+                tool_names.add(item._tool_name)
+            elif isinstance(item, str):
+                tool_names.add(item)
+
+        self._current_allowed_tools = tool_names
+        log.debug(f"Set current step: {step_name}, allowed tools: {tool_names}")
+
+    def is_tool_allowed(self, tool_name: str) -> bool:
+        """Check if a tool is allowed in the current step.
+
+        Args:
+            tool_name: Name of the tool to check
+
+        Returns:
+            True if allowed, False otherwise
+        """
+        return tool_name in self._current_allowed_tools
 
     @property
     def name(self) -> str:
