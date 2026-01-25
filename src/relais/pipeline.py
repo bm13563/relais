@@ -226,13 +226,19 @@ class Pipeline:
     def run(
         self,
         initial_input: str,
-        args: dict = None
+        args: dict = None,
+        session: str = None
     ) -> str:
         """Run the pipeline.
 
         Args:
             initial_input: Initial user input/prompt
             args: Pipeline arguments
+            session: Optional session name for debug mode. When provided:
+                - If an active session exists with this name, resumes from where it left off
+                - If no active session exists, starts fresh
+                - Pipeline pauses after each step, allowing inspection before continuing
+                - Run again with the same session name to continue
 
         Returns:
             UUID of the pipeline run
@@ -240,7 +246,8 @@ class Pipeline:
         return self.orchestrator.start_pipeline(
             pipeline_name=self.name,
             initial_input=initial_input,
-            args=args
+            args=args,
+            session=session
         )
 
     def resume(self, run_id: str, user_input: str = None) -> None:

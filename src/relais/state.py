@@ -19,6 +19,7 @@ class PipelineRunState:
         pipeline_name: Name of the pipeline definition
         current_step: Name of the current step
         status: Current status (running, completed, failed, paused)
+        session: Optional session name for debug mode
         args: Pipeline arguments
         conversation_history: Message history for main agent
         step_results: Results from completed steps
@@ -29,6 +30,7 @@ class PipelineRunState:
     pipeline_name: str
     current_step: str
     status: str
+    session: Optional[str]
     args: Dict[str, Any]
     conversation_history: List[Dict[str, Any]]
     step_results: Dict[str, Any]
@@ -55,6 +57,7 @@ class SQLiteStateManager:
         pipeline_name TEXT NOT NULL,
         current_step TEXT NOT NULL,
         status TEXT DEFAULT 'running' CHECK(status IN ('running', 'completed', 'failed', 'paused')),
+        session TEXT,
         args TEXT,
         conversation_history TEXT,
         step_results TEXT,
@@ -116,14 +119,26 @@ class SQLiteStateManager:
         try:
             conn.executescript(self.SCHEMA_SQL)
             conn.commit()
+            # Migrate: add session column if missing (for existing databases)
+            self._migrate_add_session_column(conn)
         finally:
             conn.close()
+
+    def _migrate_add_session_column(self, conn: sqlite3.Connection) -> None:
+        """Add session column to existing databases that don't have it."""
+        cursor = conn.execute("PRAGMA table_info(pipeline_runs)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'session' not in columns:
+            conn.execute("ALTER TABLE pipeline_runs ADD COLUMN session TEXT")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_session ON pipeline_runs(session)")
+            conn.commit()
 
     def create_pipeline_run(
         self,
         pipeline_name: str,
         start_step: str,
-        args: dict = None
+        args: dict = None,
+        session: str = None
     ) -> str:
         """Create a new pipeline run.
 
@@ -131,6 +146,7 @@ class SQLiteStateManager:
             pipeline_name: Name of the pipeline definition
             start_step: Initial step name
             args: Pipeline arguments
+            session: Optional session name for debug mode
 
         Returns:
             UUID of the created run
@@ -141,12 +157,13 @@ class SQLiteStateManager:
         try:
             conn.execute("""
                 INSERT INTO pipeline_runs
-                (id, pipeline_name, current_step, args, conversation_history, step_results)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (id, pipeline_name, current_step, session, args, conversation_history, step_results)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 run_id,
                 pipeline_name,
                 start_step,
+                session,
                 json.dumps(args or {}),
                 json.dumps([]),
                 json.dumps({})
@@ -156,6 +173,48 @@ class SQLiteStateManager:
             conn.close()
 
         return run_id
+
+    def get_active_session(
+        self,
+        pipeline_name: str,
+        session: str
+    ) -> Optional[PipelineRunState]:
+        """Find an active (non-completed) run for a session.
+
+        Args:
+            pipeline_name: Name of the pipeline
+            session: Session name
+
+        Returns:
+            PipelineRunState if found, None otherwise
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute("""
+                SELECT * FROM pipeline_runs
+                WHERE pipeline_name = ? AND session = ? AND status IN ('running', 'paused')
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (pipeline_name, session))
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            return PipelineRunState(
+                id=row['id'],
+                pipeline_name=row['pipeline_name'],
+                current_step=row['current_step'],
+                status=row['status'],
+                session=row['session'] if 'session' in row.keys() else None,
+                args=json.loads(row['args']) if row['args'] else {},
+                conversation_history=json.loads(row['conversation_history']) if row['conversation_history'] else [],
+                step_results=json.loads(row['step_results']) if row['step_results'] else {},
+                created_at=row['created_at'],
+                updated_at=row['updated_at']
+            )
+        finally:
+            conn.close()
 
     def get_pipeline_run(self, run_id: str) -> Optional[PipelineRunState]:
         """Load a pipeline run state.
@@ -182,6 +241,7 @@ class SQLiteStateManager:
                 pipeline_name=row['pipeline_name'],
                 current_step=row['current_step'],
                 status=row['status'],
+                session=row['session'] if 'session' in row.keys() else None,
                 args=json.loads(row['args']) if row['args'] else {},
                 conversation_history=json.loads(row['conversation_history']) if row['conversation_history'] else [],
                 step_results=json.loads(row['step_results']) if row['step_results'] else {},
@@ -401,6 +461,7 @@ class SQLiteStateManager:
                     pipeline_name=row['pipeline_name'],
                     current_step=row['current_step'],
                     status=row['status'],
+                    session=row['session'] if 'session' in row.keys() else None,
                     args=json.loads(row['args']) if row['args'] else {},
                     conversation_history=json.loads(row['conversation_history']) if row['conversation_history'] else [],
                     step_results=json.loads(row['step_results']) if row['step_results'] else {},

@@ -148,45 +148,80 @@ class PipelineOrchestrator:
         self,
         pipeline_name: str,
         initial_input: str,
-        args: dict = None
+        args: dict = None,
+        session: str = None
     ) -> str:
-        """Start a new pipeline run.
+        """Start a new pipeline run or continue an existing session.
 
         Args:
             pipeline_name: Name of registered pipeline
             initial_input: Initial prompt/input
             args: Pipeline arguments
+            session: Optional session name for debug mode. When provided:
+                - Checks for an existing active session with this name
+                - If found, resumes from where it left off
+                - If not found (or completed), starts a new run
+                - Pipeline pauses after each step completes
 
         Returns:
             Run ID (UUID)
         """
         return asyncio.run(self._start_pipeline_async(
-            pipeline_name, initial_input, args
+            pipeline_name, initial_input, args, session
         ))
 
     async def _start_pipeline_async(
         self,
         pipeline_name: str,
         initial_input: str,
-        args: dict = None
+        args: dict = None,
+        session: str = None
     ) -> str:
         """Async implementation of start_pipeline."""
-        self.log.info(f"Starting pipeline '{pipeline_name}'")
-        self.log.debug(f"Initial input: {initial_input[:200]}...")
-
         config = self.pipelines.get(pipeline_name)
         if not config:
             raise ValueError(f"Unknown pipeline: {pipeline_name}")
 
-        run_id = self.state_manager.create_pipeline_run(
-            pipeline_name=pipeline_name,
-            start_step=config.start_step,
-            args=args
-        )
-        self.log.info(f"Created pipeline run: {run_id}")
+        # Check for existing active session
+        existing_run = None
+        start_from_step = None
+        if session:
+            existing_run = self.state_manager.get_active_session(pipeline_name, session)
+            if existing_run:
+                self.log.info(f"Resuming session '{session}' from step '{existing_run.current_step}'")
+                run_id = existing_run.id
+                start_from_step = existing_run.current_step
+                args = existing_run.args  # Use stored args
+                initial_input = args.get('_initial_input', initial_input)  # Restore original input
+                # Mark as running again
+                self.state_manager.resume_pipeline(run_id)
+            else:
+                self.log.info(f"Starting new session '{session}' for pipeline '{pipeline_name}'")
+
+        if not existing_run:
+            self.log.info(f"Starting pipeline '{pipeline_name}'")
+            self.log.debug(f"Initial input: {initial_input[:200]}...")
+
+            # Store initial_input in args for session resume
+            run_args = dict(args) if args else {}
+            if session:
+                run_args['_initial_input'] = initial_input
+
+            run_id = self.state_manager.create_pipeline_run(
+                pipeline_name=pipeline_name,
+                start_step=config.start_step,
+                args=run_args,
+                session=session
+            )
+            args = run_args  # Use the args we stored
+            self.log.info(f"Created pipeline run: {run_id}")
 
         try:
-            await self._execute_pipeline(run_id, config, initial_input, args or {})
+            await self._execute_pipeline(
+                run_id, config, initial_input, args or {},
+                start_from_step=start_from_step,
+                session=session
+            )
         except Exception as e:
             self.log.error(f"Pipeline execution failed: {e}")
             self.state_manager.complete_pipeline(run_id, status='failed')
@@ -200,16 +235,34 @@ class PipelineOrchestrator:
         config: PipelineConfig,
         initial_input: str,
         args: dict,
-        start_from_step: str = None
+        start_from_step: str = None,
+        session: str = None
     ) -> None:
         """Execute the pipeline loop.
 
         Main session steps share a single ClaudeSDKClient to maintain conversation
         context. Subagent steps get isolated client instances.
+
+        When session is provided, pipeline runs in debug mode:
+        - Executes one step at a time
+        - Pauses after each step completes
+        - Call run() again with same session to continue
         """
         current_step_name = start_from_step or config.start_step
         previous_result = None
         step_count = 0
+
+        # In session mode, load previous result from stored step_results
+        if session and start_from_step:
+            run_state = self.state_manager.get_pipeline_run(run_id)
+            if run_state and run_state.step_results:
+                # Get the last step's routing data as previous_result
+                step_results = run_state.step_results
+                if step_results:
+                    last_step = list(step_results.keys())[-1] if step_results else None
+                    if last_step and 'routing_data' in step_results[last_step]:
+                        previous_result = step_results[last_step]['routing_data']
+                        self.log.debug(f"Loaded previous result from step '{last_step}': {previous_result}")
 
         # Clear/create context log file for this pipeline run
         try:
@@ -291,11 +344,28 @@ class PipelineOrchestrator:
                     }
                 )
 
+                # Session mode: pause after each step
+                if session and next_step_name:
+                    self.log.info(f"[{run_id}] Session mode: pausing after '{current_step_name}', next step is '{next_step_name}'")
+                    self.state_manager.pause_pipeline(run_id)
+                    print(f"\n{'='*60}")
+                    print(f"SESSION '{session}' PAUSED")
+                    print(f"  Completed: {current_step_name}")
+                    print(f"  Next step: {next_step_name}")
+                    print(f"  Run again with session='{session}' to continue")
+                    print(f"{'='*60}\n")
+                    return  # Exit without completing - will resume later
+
                 previous_result = routing_data
                 current_step_name = next_step_name
 
             self.log.info(f"[{run_id}] Pipeline completed after {step_count} steps")
             self.state_manager.complete_pipeline(run_id)
+            if session:
+                print(f"\n{'='*60}")
+                print(f"SESSION '{session}' COMPLETED")
+                print(f"  Total steps: {step_count}")
+                print(f"{'='*60}\n")
         finally:
             # Always disconnect main client
             await main_client.disconnect()

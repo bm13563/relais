@@ -119,6 +119,41 @@ PipelineStep(
 )
 ```
 
+### Session Mode (Step-Through Debugging)
+
+Run pipelines one step at a time for debugging and analysis:
+
+```python
+# Run first step, then pause
+run_id = pipeline.run("Analyze the data", session="debug1")
+# Pipeline pauses after first step completes
+
+# Inspect results, analyze output...
+state = pipeline.get_run(run_id)
+print(state.step_results)
+
+# Continue to next step
+pipeline.run("Analyze the data", session="debug1")
+# Pipeline pauses after second step
+
+# Keep going until pipeline completes
+pipeline.run("Analyze the data", session="debug1")
+```
+
+**How it works:**
+- First call with a session name creates a new run, executes one step, pauses
+- Subsequent calls with the same session name resume from where it left off
+- When pipeline finishes all steps, session is marked `completed`
+- Running with the same session name after completion starts a new run from the beginning
+
+**CLI usage:**
+```bash
+# Step through with session "a"
+uv run python my_pipeline.py --session=a
+uv run python my_pipeline.py -s a  # continue
+uv run python my_pipeline.py -s a  # continue again
+```
+
 ### Grounded Mode
 
 Constrain agent to only use pipeline data (reduces training data hallucination):
@@ -256,7 +291,7 @@ Pipeline.create(
     cwd: str = None               # Working directory for file operations
 )
 
-pipeline.run(initial_input: str, args: dict = None) -> str  # Returns run_id
+pipeline.run(initial_input: str, args: dict = None, session: str = None) -> str  # Returns run_id
 pipeline.get_run(run_id: str) -> PipelineRunState
 pipeline.resume(run_id: str, user_input: str = None)
 pipeline.initialize_db()
