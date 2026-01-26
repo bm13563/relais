@@ -23,7 +23,7 @@ class TestPipelineStepCreation:
         assert step.hooks == []  # default
         assert step.subagent_model is None  # default
         assert step.subagent_grounded is None  # default
-        assert step.subagent_temperature is None  # default
+        assert step.subagent_thinking is None  # default
         assert step.next == {"default": None}  # default - ends pipeline
 
     def test_fully_configured_step(self):
@@ -39,7 +39,7 @@ class TestPipelineStepCreation:
             subagent=True,
             subagent_model="opus",
             subagent_grounded=True,
-            subagent_temperature=0.7
+            subagent_thinking=True
         )
         assert step.name == "full"
         assert step.instruction == "full_instruction"
@@ -50,7 +50,7 @@ class TestPipelineStepCreation:
         assert step.hooks == hooks
         assert step.subagent_model == "opus"
         assert step.subagent_grounded is True
-        assert step.subagent_temperature == 0.7
+        assert step.subagent_thinking is True
 
     def test_step_with_conditional_routing(self):
         """Test step with conditional routing configuration."""

@@ -151,7 +151,8 @@ class TestPipelineRun:
         mock_orchestrator.start_pipeline.assert_called_once_with(
             pipeline_name="runner",
             initial_input="initial input",
-            args={"key": "value"}
+            args={"key": "value"},
+            session=None
         )
 
     @patch('relais.pipeline.SQLiteStateManager')
@@ -177,7 +178,8 @@ class TestPipelineRun:
         mock_orchestrator.start_pipeline.assert_called_once_with(
             pipeline_name="simple",
             initial_input="just input",
-            args=None
+            args=None,
+            session=None
         )
 
 
@@ -222,6 +224,7 @@ class TestPipelineGetRun:
             pipeline_name="test",
             current_step="step1",
             status="running",
+            session=None,
             args={},
             conversation_history=[],
             step_results={},
@@ -331,9 +334,9 @@ class TestCleanupAllPipelineStates:
         mock_state = MagicMock()
         now = datetime.now()
         mock_state.get_pipeline_runs.return_value = [
-            PipelineRunState("run-1", "p", "s", "completed", {}, [], {}, now, now),
-            PipelineRunState("run-2", "p", "s", "failed", {}, [], {}, now, now),
-            PipelineRunState("run-3", "p", "s", "running", {}, [], {}, now, now),
+            PipelineRunState("run-1", "p", "s", "completed", None, {}, [], {}, now, now),
+            PipelineRunState("run-2", "p", "s", "failed", None, {}, [], {}, now, now),
+            PipelineRunState("run-3", "p", "s", "running", None, {}, [], {}, now, now),
         ]
 
         cleanup_all_pipeline_states(mock_state)

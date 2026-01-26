@@ -87,6 +87,7 @@ class StepExecutionResult:
     stop_reason: str  # 'success', 'max_turns', 'error'
     routing_data: Optional[dict] = None
     session_id: Optional[str] = None
+    messages: Optional[List[dict]] = None  # Captured messages for context persistence
 
 
 @dataclass
@@ -251,18 +252,24 @@ class PipelineOrchestrator:
         current_step_name = start_from_step or config.start_step
         previous_result = None
         step_count = 0
+        accumulated_messages = []  # Accumulate messages across main session steps
 
-        # In session mode, load previous result from stored step_results
+        # In session mode, load previous result and conversation history from stored state
         if session and start_from_step:
             run_state = self.state_manager.get_pipeline_run(run_id)
-            if run_state and run_state.step_results:
+            if run_state:
+                # Load accumulated conversation history
+                if run_state.conversation_history:
+                    accumulated_messages = run_state.conversation_history
+                    self.log.debug(f"Loaded {len(accumulated_messages)} messages from previous session")
                 # Get the last step's routing data as previous_result
-                step_results = run_state.step_results
-                if step_results:
-                    last_step = list(step_results.keys())[-1] if step_results else None
-                    if last_step and 'routing_data' in step_results[last_step]:
-                        previous_result = step_results[last_step]['routing_data']
-                        self.log.debug(f"Loaded previous result from step '{last_step}': {previous_result}")
+                if run_state.step_results:
+                    step_results = run_state.step_results
+                    if step_results:
+                        last_step = list(step_results.keys())[-1] if step_results else None
+                        if last_step and 'routing_data' in step_results[last_step]:
+                            previous_result = step_results[last_step]['routing_data']
+                            self.log.debug(f"Loaded previous result from step '{last_step}': {previous_result}")
 
         # Clear/create context log file for this pipeline run
         try:
@@ -292,13 +299,16 @@ class PipelineOrchestrator:
                 self.log.debug(f"[{run_id}] max_turns={step.max_turns}, tools={step.tools}, subagent={step.subagent}")
 
                 # Build context prompt - always include initial_input so all steps can see original request
+                # In debug mode resume, inject previous conversation history for main session steps
+                prev_msgs = accumulated_messages if (session and not step.subagent) else None
                 context = self._build_step_context(
                     step=step,
                     args=args,
                     previous_result=previous_result,
                     initial_input=initial_input,
                     instructions_dir=Path(config.instructions_dir),
-                    config=config
+                    config=config,
+                    previous_messages=prev_msgs
                 )
 
                 # Log full context for debugging
@@ -325,6 +335,11 @@ class PipelineOrchestrator:
 
                 self.log.info(f"[{run_id}] Step completed - turns={result.turns_used}, reason={result.stop_reason}")
 
+                # Accumulate messages from main session steps (not subagents)
+                if not step.subagent and result.messages:
+                    accumulated_messages.extend(result.messages)
+                    self.log.debug(f"Accumulated {len(result.messages)} messages, total now {len(accumulated_messages)}")
+
                 # Determine next step
                 routing_data = result.routing_data or {}
                 next_step_name = step.resolve_next(routing_data)
@@ -334,13 +349,13 @@ class PipelineOrchestrator:
                 self.state_manager.update_pipeline_step(
                     run_id=run_id,
                     current_step=next_step_name or current_step_name,
-                    conversation_history=[],  # SDK manages conversation
+                    conversation_history=accumulated_messages,  # Persist for debug mode resume
                     step_result={
                         'step': current_step_name,
                         'turns_used': result.turns_used,
                         'stop_reason': result.stop_reason,
                         'routing_data': routing_data,
-                        'final_response': result.final_response[:1000]
+                        'final_response': result.final_response
                     }
                 )
 
@@ -433,9 +448,12 @@ class PipelineOrchestrator:
         final_response = ""
         turns_used = 0
         session_id = None
+        captured_messages = []  # Capture messages for context persistence
 
         # Send query to existing client (maintains conversation history)
         await client.query(context)
+        # Record the user query as a message
+        captured_messages.append({"role": "user", "content": context})
 
         async for message in client.receive_response():
             self.log.debug(f"Received message type: {type(message).__name__}")
@@ -455,14 +473,18 @@ class PipelineOrchestrator:
                             self.log.debug(f"Tool result without matching call: tool_use_id={tool_use_id}, known_ids={list(tool_calls_by_id.keys())}")
 
             if isinstance(message, AssistantMessage):
+                # Capture assistant message for context persistence
+                msg_content = []
                 for block in message.content:
                     if isinstance(block, TextBlock):
                         final_response = block.text
+                        msg_content.append({"type": "text", "text": block.text})
                         self.log.debug(f"Text response: {block.text[:200]}...")
                         if config.verbose:
                             print(f"\n[{step.name}] {block.text}")
                     elif isinstance(block, ToolUseBlock):
                         self.log.info(f"Tool call: {block.name} (id={block.id})")
+                        msg_content.append({"type": "tool_use", "tool": block.name, "input": block.input})
                         if config.verbose:
                             print(f"\n[{step.name}] Tool: {block.name}")
                             print(f"  Input: {block.input}")
@@ -473,6 +495,8 @@ class PipelineOrchestrator:
                         }
                         tool_calls_by_id[block.id] = tool_call
                         tool_results.append(tool_call)
+                if msg_content:
+                    captured_messages.append({"role": "assistant", "content": msg_content})
 
             elif isinstance(message, ResultMessage):
                 turns_used = message.num_turns
@@ -497,7 +521,8 @@ class PipelineOrchestrator:
             turns_used=turns_used,
             stop_reason='success' if not tool_results or final_response else 'max_turns',
             routing_data=routing_data,
-            session_id=session_id
+            session_id=session_id,
+            messages=captured_messages
         )
 
     async def _execute_subagent_step(
@@ -625,10 +650,17 @@ class PipelineOrchestrator:
         previous_result: dict,
         initial_input: str,
         instructions_dir: Path,
-        config: PipelineConfig
+        config: PipelineConfig,
+        previous_messages: List[dict] = None
     ) -> str:
         """Build the context prompt for a step."""
         sections = []
+
+        # Inject previous conversation history (for debug mode resume)
+        if previous_messages:
+            conversation_text = self._format_conversation_history(previous_messages)
+            if conversation_text:
+                sections.append(f"[Previous Conversation]\n{conversation_text}")
 
         # Determine if grounded: subagent steps use subagent_grounded, others use config.grounded
         if step.subagent:
@@ -731,6 +763,44 @@ class PipelineOrchestrator:
                 except json.JSONDecodeError:
                     return {"response": item.get("text")}
         return None
+
+    def _format_conversation_history(self, messages: List[dict]) -> str:
+        """Format captured messages as readable conversation history.
+
+        Args:
+            messages: List of captured messages with role and content
+
+        Returns:
+            Formatted conversation text
+        """
+        if not messages:
+            return ""
+
+        lines = []
+        for msg in messages:
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+
+            if role == "user":
+                # User messages are context strings - pass through without truncation
+                # Caller (pipeline) can handle truncation if needed
+                if isinstance(content, str):
+                    lines.append(f"[User Query]\n{content}")
+            elif role == "assistant":
+                # Assistant messages have structured content
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict):
+                            if block.get("type") == "text":
+                                lines.append(f"[Assistant]\n{block.get('text', '')}")
+                            elif block.get("type") == "tool_use":
+                                tool = block.get("tool", "unknown")
+                                inp = block.get("input", {})
+                                lines.append(f"[Tool Call: {tool}]\n{json.dumps(inp, indent=2)}")
+                elif isinstance(content, str):
+                    lines.append(f"[Assistant]\n{content}")
+
+        return "\n\n".join(lines)
 
     def _log_step_context(self, step_name: str, context: str, step_num: int) -> None:
         """Log the full context being sent to a step for debugging.

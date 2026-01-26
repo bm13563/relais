@@ -12815,3 +12815,1050 @@ The input "Please calculate 25 times 4" contains the word "calculate", which mat
 2026-01-21 08:14:35,482 | INFO     | relais.orchestrator  | [cab58874-4ec4-4929-8a35-60d8f6107b41] Step completed - turns=2, reason=success
 2026-01-21 08:14:35,482 | INFO     | relais.orchestrator  | [cab58874-4ec4-4929-8a35-60d8f6107b41] Routing: 'sub' -> 'END'
 2026-01-21 08:14:35,486 | INFO     | relais.orchestrator  | [cab58874-4ec4-4929-8a35-60d8f6107b41] Pipeline completed after 2 steps
+2026-01-25 19:54:38,793 | INFO     | relais.orchestrator  | Registering pipeline 'my_pipeline' with 1 steps
+2026-01-25 19:54:38,794 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 19:54:38,796 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline1' with 1 steps
+2026-01-25 19:54:38,797 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 19:54:38,797 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline2' with 1 steps
+2026-01-25 19:54:38,797 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 19:54:38,797 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline3' with 1 steps
+2026-01-25 19:54:38,797 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 19:54:38,817 | DEBUG    | relais.orchestrator  | Hook data: 1 items
+2026-01-25 19:54:38,822 | WARNING  | relais.orchestrator  | Instruction not found: /tmp/pytest-of-ben/pytest-1/test_build_context_missing_ins0/instructions/nonexistent.md
+2026-01-25 19:54:38,843 | DEBUG    | relais.orchestrator  | Skipping permission error output for routing: unauthorized
+2026-01-25 19:54:38,846 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong_step
+2026-01-25 19:54:38,849 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong2
+2026-01-25 19:54:38,849 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong1
+2026-01-25 19:54:38,851 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: validation_error
+2026-01-25 19:54:38,852 | DEBUG    | relais.orchestrator  | Skipping permission error output for routing: perm_error
+2026-01-25 19:54:38,861 | INFO     | relais.orchestrator  | Registering pipeline 'test' with 1 steps
+2026-01-25 19:54:38,862 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 19:54:38,868 | INFO     | relais.orchestrator  | SDK options: max_turns=2, allowed_tools=['mcp__test__tool1']
+2026-01-25 19:54:38,869 | DEBUG    | relais.orchestrator  | Received message type: ResultMessage
+2026-01-25 19:54:38,869 | DEBUG    | relais.orchestrator  | Tool results for routing: []
+2026-01-25 19:54:38,869 | DEBUG    | relais.orchestrator  | Extracted routing data: None
+2026-01-25 19:54:38,977 | INFO     | relais.orchestrator  | Spawning subagent a5a56e53-36d2-4495-8142-1ec481056774 for 'research_step'
+2026-01-25 19:54:38,978 | INFO     | relais.orchestrator  | Subagent options: max_turns=5, model=sonnet, allowed_tools=['mcp__test__research_tool'], thinking=False
+2026-01-25 19:54:38,985 | INFO     | relais.orchestrator  | Spawning subagent b723290b-d99a-4f76-ae3a-e12f1a64672a for 'research'
+2026-01-25 19:54:38,986 | INFO     | relais.orchestrator  | Subagent options: max_turns=10, model=sonnet, allowed_tools=[], thinking=False
+2026-01-25 19:54:38,995 | INFO     | relais.orchestrator  | [run-123] Beginning pipeline execution from 'only'
+2026-01-25 19:54:40,543 | INFO     | relais.orchestrator  | [run-456] Beginning pipeline execution from 'first'
+2026-01-25 19:54:41,863 | INFO     | relais.orchestrator  | [run-789] Beginning pipeline execution from 'router'
+2026-01-25 19:54:43,153 | INFO     | relais.orchestrator  | [run] Beginning pipeline execution from 'missing'
+2026-01-25 19:54:44,492 | INFO     | relais.pipeline      | Creating pipeline 'test_pipeline' with 1 steps
+2026-01-25 19:54:44,493 | INFO     | relais.tools         | Created tool registry: test_pipeline_tools
+2026-01-25 19:54:44,494 | INFO     | relais.pipeline      | Pipeline 'test_pipeline' created successfully
+2026-01-25 19:54:44,500 | INFO     | relais.pipeline      | Creating pipeline 'full_pipeline' with 2 steps
+2026-01-25 19:54:44,501 | INFO     | relais.tools         | Created tool registry: full_pipeline_tools
+2026-01-25 19:54:44,501 | INFO     | relais.pipeline      | Pipeline 'full_pipeline' created successfully
+2026-01-25 19:54:44,506 | INFO     | relais.pipeline      | Creating pipeline 'registered' with 1 steps
+2026-01-25 19:54:44,507 | INFO     | relais.tools         | Created tool registry: registered_tools
+2026-01-25 19:54:44,507 | INFO     | relais.pipeline      | Pipeline 'registered' created successfully
+2026-01-25 19:54:44,514 | INFO     | relais.pipeline      | Creating pipeline 'tooled' with 1 steps
+2026-01-25 19:54:44,515 | INFO     | relais.tools         | Created tool registry: tooled_tools
+2026-01-25 19:54:44,515 | INFO     | relais.pipeline      | Pipeline 'tooled' created successfully
+2026-01-25 19:54:44,521 | INFO     | relais.pipeline      | Creating pipeline 'runner' with 1 steps
+2026-01-25 19:54:44,521 | INFO     | relais.tools         | Created tool registry: runner_tools
+2026-01-25 19:54:44,521 | INFO     | relais.pipeline      | Pipeline 'runner' created successfully
+2026-01-25 19:54:44,654 | INFO     | relais.pipeline      | Creating pipeline 'simple' with 1 steps
+2026-01-25 19:54:44,654 | INFO     | relais.tools         | Created tool registry: simple_tools
+2026-01-25 19:54:44,657 | INFO     | relais.pipeline      | Pipeline 'simple' created successfully
+2026-01-25 19:54:44,788 | INFO     | relais.pipeline      | Creating pipeline 'resumable' with 1 steps
+2026-01-25 19:54:44,789 | INFO     | relais.tools         | Created tool registry: resumable_tools
+2026-01-25 19:54:44,790 | INFO     | relais.pipeline      | Pipeline 'resumable' created successfully
+2026-01-25 19:54:44,813 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 19:54:44,813 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 19:54:44,814 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 19:54:44,821 | INFO     | relais.pipeline      | Creating pipeline 'my_pipeline' with 1 steps
+2026-01-25 19:54:44,821 | INFO     | relais.tools         | Created tool registry: my_pipeline_tools
+2026-01-25 19:54:44,822 | INFO     | relais.pipeline      | Pipeline 'my_pipeline' created successfully
+2026-01-25 19:54:44,834 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 19:54:44,834 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 19:54:44,835 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 19:54:44,863 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 19:54:44,864 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 19:54:44,865 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 19:54:44,872 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 19:54:44,872 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 19:54:44,873 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 19:54:44,881 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 19:54:44,882 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 19:54:44,883 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 19:54:45,832 | INFO     | relais.tools         | Created tool registry: pipeline_tools
+2026-01-25 19:54:45,834 | INFO     | relais.tools         | Created tool registry: my_custom_tools
+2026-01-25 19:54:45,836 | INFO     | relais.tools         | Created tool registry: empty
+2026-01-25 19:54:45,839 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,840 | INFO     | relais.tools         | Registering tool: greet
+2026-01-25 19:54:45,840 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'The name to greet'}}, 'required': ['name']}
+2026-01-25 19:54:45,844 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,845 | INFO     | relais.tools         | Registering tool: simple
+2026-01-25 19:54:45,845 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,847 | INFO     | relais.tools         | Created tool registry: multi
+2026-01-25 19:54:45,847 | INFO     | relais.tools         | Registering tool: tool1
+2026-01-25 19:54:45,848 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,848 | INFO     | relais.tools         | Registering tool: tool2
+2026-01-25 19:54:45,848 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,849 | INFO     | relais.tools         | Registering tool: tool3
+2026-01-25 19:54:45,849 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,851 | INFO     | relais.tools         | Created tool registry: complex
+2026-01-25 19:54:45,851 | INFO     | relais.tools         | Registering tool: search
+2026-01-25 19:54:45,852 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'Search query'}, 'limit': {'type': 'integer', 'description': 'Max results'}, 'include_archived': {'type': 'boolean', 'description': 'Include archived items'}}, 'required': ['query', 'limit']}
+2026-01-25 19:54:45,855 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,856 | INFO     | relais.tools         | Registering tool: exists
+2026-01-25 19:54:45,856 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,859 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,861 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,862 | INFO     | relais.tools         | Registering tool: alpha
+2026-01-25 19:54:45,862 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,862 | INFO     | relais.tools         | Registering tool: beta
+2026-01-25 19:54:45,862 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,865 | INFO     | relais.tools         | Created tool registry: my_server
+2026-01-25 19:54:45,865 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 19:54:45,865 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,866 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 19:54:45,866 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,869 | INFO     | relais.tools         | Created tool registry: server
+2026-01-25 19:54:45,869 | INFO     | relais.tools         | Registering tool: a
+2026-01-25 19:54:45,869 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,870 | INFO     | relais.tools         | Registering tool: b
+2026-01-25 19:54:45,870 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,870 | INFO     | relais.tools         | Registering tool: c
+2026-01-25 19:54:45,871 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,874 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,877 | INFO     | relais.tools         | Created tool registry: tools
+2026-01-25 19:54:45,877 | INFO     | relais.tools         | Registering tool: custom
+2026-01-25 19:54:45,877 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,879 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,881 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,883 | INFO     | relais.tools         | Created tool registry: server
+2026-01-25 19:54:45,883 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 19:54:45,883 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,883 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 19:54:45,884 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,887 | INFO     | relais.tools         | Created tool registry: tools
+2026-01-25 19:54:45,887 | INFO     | relais.tools         | Registering tool: custom
+2026-01-25 19:54:45,888 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,893 | INFO     | relais.tools         | Created tool registry: my_tools
+2026-01-25 19:54:45,894 | INFO     | relais.tools         | Registering tool: test
+2026-01-25 19:54:45,894 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,895 | INFO     | relais.tools         | Creating MCP server 'my_tools' v1.0.0 with 1 tools
+2026-01-25 19:54:45,899 | INFO     | relais.tools         | Created tool registry: versioned
+2026-01-25 19:54:45,899 | INFO     | relais.tools         | Registering tool: t
+2026-01-25 19:54:45,900 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,900 | INFO     | relais.tools         | Creating MCP server 'versioned' v2.5.0 with 1 tools
+2026-01-25 19:54:45,904 | INFO     | relais.tools         | Created tool registry: empty
+2026-01-25 19:54:45,904 | INFO     | relais.tools         | Creating MCP server 'empty' v1.0.0 with 0 tools
+2026-01-25 19:54:45,912 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,912 | INFO     | relais.tools         | Registering tool: format_test
+2026-01-25 19:54:45,912 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,915 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,916 | INFO     | relais.tools         | Registering tool: capture
+2026-01-25 19:54:45,916 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,918 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,919 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 19:54:45,919 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,920 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 19:54:45,920 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,920 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a'}
+2026-01-25 19:54:45,923 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,924 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 19:54:45,924 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,925 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a'}
+2026-01-25 19:54:45,927 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,927 | INFO     | relais.tools         | Registering tool: allowed
+2026-01-25 19:54:45,927 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,928 | INFO     | relais.tools         | Registering tool: not_allowed
+2026-01-25 19:54:45,928 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,928 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'allowed'}
+2026-01-25 19:54:45,931 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,931 | INFO     | relais.tools         | Registering tool: protected
+2026-01-25 19:54:45,931 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'Name'}}, 'required': ['name']}
+2026-01-25 19:54:45,931 | DEBUG    | relais.tools         | Set current step: other_step, allowed tools: set()
+2026-01-25 19:54:45,932 | WARNING  | relais.tools         | Blocked unauthorized tool call: protected in step other_step
+2026-01-25 19:54:45,934 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,935 | INFO     | relais.tools         | Registering tool: allowed
+2026-01-25 19:54:45,935 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'Name'}}, 'required': ['name']}
+2026-01-25 19:54:45,935 | DEBUG    | relais.tools         | Set current step: correct_step, allowed tools: {'allowed'}
+2026-01-25 19:54:45,939 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,940 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 19:54:45,940 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,940 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 19:54:45,940 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,940 | INFO     | relais.tools         | Registering tool: tool_c
+2026-01-25 19:54:45,940 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,941 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a', 'tool_b'}
+2026-01-25 19:54:45,963 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 19:54:45,963 | INFO     | relais.tools         | Registering tool: any_tool
+2026-01-25 19:54:45,963 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 19:54:45,963 | DEBUG    | relais.tools         | Set current step: restricted_step, allowed tools: set()
+2026-01-25 20:00:38,879 | INFO     | relais.orchestrator  | Registering pipeline 'my_pipeline' with 1 steps
+2026-01-25 20:00:38,879 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:00:38,883 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline1' with 1 steps
+2026-01-25 20:00:38,883 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:00:38,883 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline2' with 1 steps
+2026-01-25 20:00:38,883 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:00:38,883 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline3' with 1 steps
+2026-01-25 20:00:38,883 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:00:38,902 | DEBUG    | relais.orchestrator  | Hook data: 1 items
+2026-01-25 20:00:38,907 | WARNING  | relais.orchestrator  | Instruction not found: /tmp/pytest-of-ben/pytest-2/test_build_context_missing_ins0/instructions/nonexistent.md
+2026-01-25 20:00:38,932 | DEBUG    | relais.orchestrator  | Skipping permission error output for routing: unauthorized
+2026-01-25 20:00:38,936 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong_step
+2026-01-25 20:00:38,938 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong2
+2026-01-25 20:00:38,938 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong1
+2026-01-25 20:00:38,940 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: validation_error
+2026-01-25 20:00:38,940 | DEBUG    | relais.orchestrator  | Skipping permission error output for routing: perm_error
+2026-01-25 20:00:38,946 | INFO     | relais.orchestrator  | Registering pipeline 'test' with 1 steps
+2026-01-25 20:00:38,946 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:00:38,953 | INFO     | relais.orchestrator  | SDK options: max_turns=2, allowed_tools=['mcp__test__tool1']
+2026-01-25 20:00:38,954 | DEBUG    | relais.orchestrator  | Received message type: ResultMessage
+2026-01-25 20:00:38,954 | DEBUG    | relais.orchestrator  | Tool results for routing: []
+2026-01-25 20:00:38,954 | DEBUG    | relais.orchestrator  | Extracted routing data: None
+2026-01-25 20:00:38,960 | INFO     | relais.orchestrator  | SDK options: max_turns=5, allowed_tools=['mcp__test__tool1']
+2026-01-25 20:00:38,961 | DEBUG    | relais.orchestrator  | Received message type: ResultMessage
+2026-01-25 20:00:38,962 | DEBUG    | relais.orchestrator  | Tool results for routing: []
+2026-01-25 20:00:38,962 | DEBUG    | relais.orchestrator  | Extracted routing data: None
+2026-01-25 20:00:39,062 | INFO     | relais.orchestrator  | Spawning subagent 6fce9226-09d0-4134-baa9-ece94c79c1c3 for 'research_step'
+2026-01-25 20:00:39,063 | INFO     | relais.orchestrator  | Subagent options: max_turns=5, model=sonnet, allowed_tools=['mcp__test__research_tool'], thinking=False
+2026-01-25 20:00:39,072 | INFO     | relais.orchestrator  | Spawning subagent bbdbe555-d90c-4c1d-9aeb-2b0f7084dd2f for 'research'
+2026-01-25 20:00:39,073 | INFO     | relais.orchestrator  | Subagent options: max_turns=10, model=sonnet, allowed_tools=[], thinking=False
+2026-01-25 20:00:39,081 | INFO     | relais.orchestrator  | [run-123] Beginning pipeline execution from 'only'
+2026-01-25 20:00:39,082 | INFO     | relais.orchestrator  | [run-123] === Step 1: 'only' ===
+2026-01-25 20:00:39,082 | DEBUG    | relais.orchestrator  | [run-123] max_turns=10, tools=[], subagent=False
+2026-01-25 20:00:39,082 | INFO     | relais.orchestrator  | [run-123] Running in MAIN session (persistent)
+2026-01-25 20:00:39,083 | INFO     | relais.orchestrator  | [run-123] Step completed - turns=1, reason=success
+2026-01-25 20:00:39,083 | INFO     | relais.orchestrator  | [run-123] Routing: 'only' -> 'END'
+2026-01-25 20:00:39,084 | INFO     | relais.orchestrator  | [run-123] Pipeline completed after 1 steps
+2026-01-25 20:00:39,092 | INFO     | relais.orchestrator  | [run-456] Beginning pipeline execution from 'first'
+2026-01-25 20:00:39,093 | INFO     | relais.orchestrator  | [run-456] === Step 1: 'first' ===
+2026-01-25 20:00:39,093 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:00:39,093 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:00:39,093 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:00:39,094 | INFO     | relais.orchestrator  | [run-456] Routing: 'first' -> 'second'
+2026-01-25 20:00:39,094 | INFO     | relais.orchestrator  | [run-456] === Step 2: 'second' ===
+2026-01-25 20:00:39,094 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:00:39,094 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:00:39,095 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:00:39,095 | INFO     | relais.orchestrator  | [run-456] Routing: 'second' -> 'third'
+2026-01-25 20:00:39,095 | INFO     | relais.orchestrator  | [run-456] === Step 3: 'third' ===
+2026-01-25 20:00:39,095 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:00:39,095 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:00:39,095 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:00:39,096 | INFO     | relais.orchestrator  | [run-456] Routing: 'third' -> 'END'
+2026-01-25 20:00:39,096 | INFO     | relais.orchestrator  | [run-456] Pipeline completed after 3 steps
+2026-01-25 20:00:39,106 | INFO     | relais.orchestrator  | [run-789] Beginning pipeline execution from 'router'
+2026-01-25 20:00:39,107 | INFO     | relais.orchestrator  | [run-789] === Step 1: 'router' ===
+2026-01-25 20:00:39,107 | DEBUG    | relais.orchestrator  | [run-789] max_turns=10, tools=[], subagent=False
+2026-01-25 20:00:39,107 | INFO     | relais.orchestrator  | [run-789] Running in MAIN session (persistent)
+2026-01-25 20:00:39,107 | INFO     | relais.orchestrator  | [run-789] Step completed - turns=1, reason=success
+2026-01-25 20:00:39,107 | INFO     | relais.orchestrator  | [run-789] Routing: 'router' -> 'handle_b'
+2026-01-25 20:00:39,108 | INFO     | relais.orchestrator  | [run-789] === Step 2: 'handle_b' ===
+2026-01-25 20:00:39,108 | DEBUG    | relais.orchestrator  | [run-789] max_turns=10, tools=[], subagent=False
+2026-01-25 20:00:39,108 | INFO     | relais.orchestrator  | [run-789] Running in MAIN session (persistent)
+2026-01-25 20:00:39,108 | INFO     | relais.orchestrator  | [run-789] Step completed - turns=1, reason=success
+2026-01-25 20:00:39,109 | INFO     | relais.orchestrator  | [run-789] Routing: 'handle_b' -> 'END'
+2026-01-25 20:00:39,109 | INFO     | relais.orchestrator  | [run-789] Pipeline completed after 2 steps
+2026-01-25 20:00:39,120 | INFO     | relais.orchestrator  | [run] Beginning pipeline execution from 'missing'
+2026-01-25 20:00:39,159 | INFO     | relais.pipeline      | Creating pipeline 'test_pipeline' with 1 steps
+2026-01-25 20:00:39,160 | INFO     | relais.tools         | Created tool registry: test_pipeline_tools
+2026-01-25 20:00:39,160 | INFO     | relais.pipeline      | Pipeline 'test_pipeline' created successfully
+2026-01-25 20:00:39,165 | INFO     | relais.pipeline      | Creating pipeline 'full_pipeline' with 2 steps
+2026-01-25 20:00:39,166 | INFO     | relais.tools         | Created tool registry: full_pipeline_tools
+2026-01-25 20:00:39,167 | INFO     | relais.pipeline      | Pipeline 'full_pipeline' created successfully
+2026-01-25 20:00:39,172 | INFO     | relais.pipeline      | Creating pipeline 'registered' with 1 steps
+2026-01-25 20:00:39,173 | INFO     | relais.tools         | Created tool registry: registered_tools
+2026-01-25 20:00:39,173 | INFO     | relais.pipeline      | Pipeline 'registered' created successfully
+2026-01-25 20:00:39,178 | INFO     | relais.pipeline      | Creating pipeline 'tooled' with 1 steps
+2026-01-25 20:00:39,178 | INFO     | relais.tools         | Created tool registry: tooled_tools
+2026-01-25 20:00:39,179 | INFO     | relais.pipeline      | Pipeline 'tooled' created successfully
+2026-01-25 20:00:39,185 | INFO     | relais.pipeline      | Creating pipeline 'runner' with 1 steps
+2026-01-25 20:00:39,186 | INFO     | relais.tools         | Created tool registry: runner_tools
+2026-01-25 20:00:39,186 | INFO     | relais.pipeline      | Pipeline 'runner' created successfully
+2026-01-25 20:00:39,191 | INFO     | relais.pipeline      | Creating pipeline 'simple' with 1 steps
+2026-01-25 20:00:39,192 | INFO     | relais.tools         | Created tool registry: simple_tools
+2026-01-25 20:00:39,192 | INFO     | relais.pipeline      | Pipeline 'simple' created successfully
+2026-01-25 20:00:39,197 | INFO     | relais.pipeline      | Creating pipeline 'resumable' with 1 steps
+2026-01-25 20:00:39,198 | INFO     | relais.tools         | Created tool registry: resumable_tools
+2026-01-25 20:00:39,199 | INFO     | relais.pipeline      | Pipeline 'resumable' created successfully
+2026-01-25 20:00:39,205 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:00:39,205 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:00:39,206 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:00:39,214 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:00:39,214 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:00:39,215 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:00:39,225 | INFO     | relais.pipeline      | Creating pipeline 'my_pipeline' with 1 steps
+2026-01-25 20:00:39,225 | INFO     | relais.tools         | Created tool registry: my_pipeline_tools
+2026-01-25 20:00:39,226 | INFO     | relais.pipeline      | Pipeline 'my_pipeline' created successfully
+2026-01-25 20:00:39,231 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:00:39,231 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:00:39,232 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:00:39,247 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:00:39,248 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:00:39,248 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:00:39,256 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:00:39,256 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:00:39,257 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:00:39,262 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:00:39,262 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:00:39,263 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:00:40,183 | INFO     | relais.tools         | Created tool registry: pipeline_tools
+2026-01-25 20:00:40,185 | INFO     | relais.tools         | Created tool registry: my_custom_tools
+2026-01-25 20:00:40,187 | INFO     | relais.tools         | Created tool registry: empty
+2026-01-25 20:00:40,189 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,189 | INFO     | relais.tools         | Registering tool: greet
+2026-01-25 20:00:40,189 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'The name to greet'}}, 'required': ['name']}
+2026-01-25 20:00:40,192 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,192 | INFO     | relais.tools         | Registering tool: simple
+2026-01-25 20:00:40,192 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,195 | INFO     | relais.tools         | Created tool registry: multi
+2026-01-25 20:00:40,195 | INFO     | relais.tools         | Registering tool: tool1
+2026-01-25 20:00:40,195 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,196 | INFO     | relais.tools         | Registering tool: tool2
+2026-01-25 20:00:40,196 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,197 | INFO     | relais.tools         | Registering tool: tool3
+2026-01-25 20:00:40,197 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,201 | INFO     | relais.tools         | Created tool registry: complex
+2026-01-25 20:00:40,201 | INFO     | relais.tools         | Registering tool: search
+2026-01-25 20:00:40,202 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'Search query'}, 'limit': {'type': 'integer', 'description': 'Max results'}, 'include_archived': {'type': 'boolean', 'description': 'Include archived items'}}, 'required': ['query', 'limit']}
+2026-01-25 20:00:40,204 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,205 | INFO     | relais.tools         | Registering tool: exists
+2026-01-25 20:00:40,205 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,206 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,208 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,208 | INFO     | relais.tools         | Registering tool: alpha
+2026-01-25 20:00:40,209 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,209 | INFO     | relais.tools         | Registering tool: beta
+2026-01-25 20:00:40,209 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,212 | INFO     | relais.tools         | Created tool registry: my_server
+2026-01-25 20:00:40,213 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:00:40,213 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,214 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:00:40,214 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,217 | INFO     | relais.tools         | Created tool registry: server
+2026-01-25 20:00:40,218 | INFO     | relais.tools         | Registering tool: a
+2026-01-25 20:00:40,218 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,218 | INFO     | relais.tools         | Registering tool: b
+2026-01-25 20:00:40,219 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,219 | INFO     | relais.tools         | Registering tool: c
+2026-01-25 20:00:40,219 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,222 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,224 | INFO     | relais.tools         | Created tool registry: tools
+2026-01-25 20:00:40,224 | INFO     | relais.tools         | Registering tool: custom
+2026-01-25 20:00:40,225 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,227 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,230 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,233 | INFO     | relais.tools         | Created tool registry: server
+2026-01-25 20:00:40,234 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:00:40,234 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,234 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:00:40,235 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,237 | INFO     | relais.tools         | Created tool registry: tools
+2026-01-25 20:00:40,238 | INFO     | relais.tools         | Registering tool: custom
+2026-01-25 20:00:40,238 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,241 | INFO     | relais.tools         | Created tool registry: my_tools
+2026-01-25 20:00:40,241 | INFO     | relais.tools         | Registering tool: test
+2026-01-25 20:00:40,241 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,241 | INFO     | relais.tools         | Creating MCP server 'my_tools' v1.0.0 with 1 tools
+2026-01-25 20:00:40,245 | INFO     | relais.tools         | Created tool registry: versioned
+2026-01-25 20:00:40,245 | INFO     | relais.tools         | Registering tool: t
+2026-01-25 20:00:40,245 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,246 | INFO     | relais.tools         | Creating MCP server 'versioned' v2.5.0 with 1 tools
+2026-01-25 20:00:40,250 | INFO     | relais.tools         | Created tool registry: empty
+2026-01-25 20:00:40,250 | INFO     | relais.tools         | Creating MCP server 'empty' v1.0.0 with 0 tools
+2026-01-25 20:00:40,256 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,256 | INFO     | relais.tools         | Registering tool: format_test
+2026-01-25 20:00:40,257 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,257 | WARNING  | relais.tools         | Blocked unauthorized tool call: format_test in step None
+2026-01-25 20:00:40,260 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,261 | INFO     | relais.tools         | Registering tool: capture
+2026-01-25 20:00:40,261 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,262 | WARNING  | relais.tools         | Blocked unauthorized tool call: capture in step None
+2026-01-25 20:00:40,283 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,284 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:00:40,284 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,284 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:00:40,284 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,285 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a'}
+2026-01-25 20:00:40,287 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,288 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:00:40,288 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,288 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a'}
+2026-01-25 20:00:40,291 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,291 | INFO     | relais.tools         | Registering tool: allowed
+2026-01-25 20:00:40,292 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,293 | INFO     | relais.tools         | Registering tool: not_allowed
+2026-01-25 20:00:40,293 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,293 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'allowed'}
+2026-01-25 20:00:40,298 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,298 | INFO     | relais.tools         | Registering tool: protected
+2026-01-25 20:00:40,298 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'Name'}}, 'required': ['name']}
+2026-01-25 20:00:40,299 | DEBUG    | relais.tools         | Set current step: other_step, allowed tools: set()
+2026-01-25 20:00:40,299 | WARNING  | relais.tools         | Blocked unauthorized tool call: protected in step other_step
+2026-01-25 20:00:40,302 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,303 | INFO     | relais.tools         | Registering tool: allowed
+2026-01-25 20:00:40,303 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'Name'}}, 'required': ['name']}
+2026-01-25 20:00:40,303 | DEBUG    | relais.tools         | Set current step: correct_step, allowed tools: {'allowed'}
+2026-01-25 20:00:40,305 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,306 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:00:40,306 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,306 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:00:40,306 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,306 | INFO     | relais.tools         | Registering tool: tool_c
+2026-01-25 20:00:40,307 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,307 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a', 'tool_b'}
+2026-01-25 20:00:40,308 | WARNING  | relais.tools         | Blocked unauthorized tool call: tool_c in step step1
+2026-01-25 20:00:40,310 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:00:40,311 | INFO     | relais.tools         | Registering tool: any_tool
+2026-01-25 20:00:40,311 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:00:40,311 | DEBUG    | relais.tools         | Set current step: restricted_step, allowed tools: set()
+2026-01-25 20:00:40,312 | WARNING  | relais.tools         | Blocked unauthorized tool call: any_tool in step restricted_step
+2026-01-25 20:01:31,063 | INFO     | relais.orchestrator  | Registering pipeline 'my_pipeline' with 1 steps
+2026-01-25 20:01:31,068 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:01:31,071 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline1' with 1 steps
+2026-01-25 20:01:31,072 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:01:31,072 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline2' with 1 steps
+2026-01-25 20:01:31,072 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:01:31,072 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline3' with 1 steps
+2026-01-25 20:01:31,072 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:01:31,092 | DEBUG    | relais.orchestrator  | Hook data: 1 items
+2026-01-25 20:01:31,097 | WARNING  | relais.orchestrator  | Instruction not found: /tmp/pytest-of-ben/pytest-3/test_build_context_missing_ins0/instructions/nonexistent.md
+2026-01-25 20:01:31,127 | DEBUG    | relais.orchestrator  | Skipping permission error output for routing: unauthorized
+2026-01-25 20:01:31,130 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong_step
+2026-01-25 20:01:31,132 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong2
+2026-01-25 20:01:31,133 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong1
+2026-01-25 20:01:31,136 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: validation_error
+2026-01-25 20:01:31,136 | DEBUG    | relais.orchestrator  | Skipping permission error output for routing: perm_error
+2026-01-25 20:01:31,144 | INFO     | relais.orchestrator  | Registering pipeline 'test' with 1 steps
+2026-01-25 20:01:31,145 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:01:31,152 | INFO     | relais.orchestrator  | SDK options: max_turns=2, allowed_tools=['mcp__test__tool1']
+2026-01-25 20:01:31,153 | DEBUG    | relais.orchestrator  | Received message type: ResultMessage
+2026-01-25 20:01:31,154 | DEBUG    | relais.orchestrator  | Tool results for routing: []
+2026-01-25 20:01:31,154 | DEBUG    | relais.orchestrator  | Extracted routing data: None
+2026-01-25 20:01:31,164 | INFO     | relais.orchestrator  | SDK options: max_turns=5, allowed_tools=['mcp__test__tool1']
+2026-01-25 20:01:31,313 | INFO     | relais.orchestrator  | Spawning subagent e24e91d9-7d85-4445-ae54-7d5479b32272 for 'research_step'
+2026-01-25 20:01:31,313 | INFO     | relais.orchestrator  | Subagent options: max_turns=5, model=sonnet, allowed_tools=['mcp__test__research_tool'], thinking=False
+2026-01-25 20:01:31,321 | INFO     | relais.orchestrator  | Spawning subagent 6ae459ae-079d-41f5-8ed9-169a813e3ece for 'research'
+2026-01-25 20:01:31,322 | INFO     | relais.orchestrator  | Subagent options: max_turns=10, model=sonnet, allowed_tools=[], thinking=False
+2026-01-25 20:01:31,332 | INFO     | relais.orchestrator  | [run-123] Beginning pipeline execution from 'only'
+2026-01-25 20:01:31,332 | INFO     | relais.orchestrator  | [run-123] === Step 1: 'only' ===
+2026-01-25 20:01:31,332 | DEBUG    | relais.orchestrator  | [run-123] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:31,333 | INFO     | relais.orchestrator  | [run-123] Running in MAIN session (persistent)
+2026-01-25 20:01:31,333 | INFO     | relais.orchestrator  | [run-123] Step completed - turns=1, reason=success
+2026-01-25 20:01:31,333 | INFO     | relais.orchestrator  | [run-123] Routing: 'only' -> 'END'
+2026-01-25 20:01:31,333 | INFO     | relais.orchestrator  | [run-123] Pipeline completed after 1 steps
+2026-01-25 20:01:31,343 | INFO     | relais.orchestrator  | [run-456] Beginning pipeline execution from 'first'
+2026-01-25 20:01:31,343 | INFO     | relais.orchestrator  | [run-456] === Step 1: 'first' ===
+2026-01-25 20:01:31,343 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:31,344 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:01:31,344 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:01:31,344 | INFO     | relais.orchestrator  | [run-456] Routing: 'first' -> 'second'
+2026-01-25 20:01:31,345 | INFO     | relais.orchestrator  | [run-456] === Step 2: 'second' ===
+2026-01-25 20:01:31,345 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:31,345 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:01:31,345 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:01:31,345 | INFO     | relais.orchestrator  | [run-456] Routing: 'second' -> 'third'
+2026-01-25 20:01:31,346 | INFO     | relais.orchestrator  | [run-456] === Step 3: 'third' ===
+2026-01-25 20:01:31,346 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:31,346 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:01:31,346 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:01:31,346 | INFO     | relais.orchestrator  | [run-456] Routing: 'third' -> 'END'
+2026-01-25 20:01:31,346 | INFO     | relais.orchestrator  | [run-456] Pipeline completed after 3 steps
+2026-01-25 20:01:31,358 | INFO     | relais.orchestrator  | [run-789] Beginning pipeline execution from 'router'
+2026-01-25 20:01:31,359 | INFO     | relais.orchestrator  | [run-789] === Step 1: 'router' ===
+2026-01-25 20:01:31,359 | DEBUG    | relais.orchestrator  | [run-789] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:31,359 | INFO     | relais.orchestrator  | [run-789] Running in MAIN session (persistent)
+2026-01-25 20:01:31,359 | INFO     | relais.orchestrator  | [run-789] Step completed - turns=1, reason=success
+2026-01-25 20:01:31,359 | INFO     | relais.orchestrator  | [run-789] Routing: 'router' -> 'handle_b'
+2026-01-25 20:01:31,360 | INFO     | relais.orchestrator  | [run-789] === Step 2: 'handle_b' ===
+2026-01-25 20:01:31,360 | DEBUG    | relais.orchestrator  | [run-789] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:31,361 | INFO     | relais.orchestrator  | [run-789] Running in MAIN session (persistent)
+2026-01-25 20:01:31,361 | INFO     | relais.orchestrator  | [run-789] Step completed - turns=1, reason=success
+2026-01-25 20:01:31,361 | INFO     | relais.orchestrator  | [run-789] Routing: 'handle_b' -> 'END'
+2026-01-25 20:01:31,361 | INFO     | relais.orchestrator  | [run-789] Pipeline completed after 2 steps
+2026-01-25 20:01:31,369 | INFO     | relais.orchestrator  | [run] Beginning pipeline execution from 'missing'
+2026-01-25 20:01:31,416 | INFO     | relais.pipeline      | Creating pipeline 'test_pipeline' with 1 steps
+2026-01-25 20:01:31,417 | INFO     | relais.tools         | Created tool registry: test_pipeline_tools
+2026-01-25 20:01:31,418 | INFO     | relais.pipeline      | Pipeline 'test_pipeline' created successfully
+2026-01-25 20:01:31,424 | INFO     | relais.pipeline      | Creating pipeline 'full_pipeline' with 2 steps
+2026-01-25 20:01:31,424 | INFO     | relais.tools         | Created tool registry: full_pipeline_tools
+2026-01-25 20:01:31,426 | INFO     | relais.pipeline      | Pipeline 'full_pipeline' created successfully
+2026-01-25 20:01:31,432 | INFO     | relais.pipeline      | Creating pipeline 'registered' with 1 steps
+2026-01-25 20:01:31,432 | INFO     | relais.tools         | Created tool registry: registered_tools
+2026-01-25 20:01:31,433 | INFO     | relais.pipeline      | Pipeline 'registered' created successfully
+2026-01-25 20:01:31,440 | INFO     | relais.pipeline      | Creating pipeline 'tooled' with 1 steps
+2026-01-25 20:01:31,440 | INFO     | relais.tools         | Created tool registry: tooled_tools
+2026-01-25 20:01:31,441 | INFO     | relais.pipeline      | Pipeline 'tooled' created successfully
+2026-01-25 20:01:31,448 | INFO     | relais.pipeline      | Creating pipeline 'runner' with 1 steps
+2026-01-25 20:01:31,448 | INFO     | relais.tools         | Created tool registry: runner_tools
+2026-01-25 20:01:31,449 | INFO     | relais.pipeline      | Pipeline 'runner' created successfully
+2026-01-25 20:01:31,455 | INFO     | relais.pipeline      | Creating pipeline 'simple' with 1 steps
+2026-01-25 20:01:31,455 | INFO     | relais.tools         | Created tool registry: simple_tools
+2026-01-25 20:01:31,456 | INFO     | relais.pipeline      | Pipeline 'simple' created successfully
+2026-01-25 20:01:31,464 | INFO     | relais.pipeline      | Creating pipeline 'resumable' with 1 steps
+2026-01-25 20:01:31,464 | INFO     | relais.tools         | Created tool registry: resumable_tools
+2026-01-25 20:01:31,465 | INFO     | relais.pipeline      | Pipeline 'resumable' created successfully
+2026-01-25 20:01:31,471 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:31,472 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:31,473 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:31,479 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:31,479 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:31,480 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:31,487 | INFO     | relais.pipeline      | Creating pipeline 'my_pipeline' with 1 steps
+2026-01-25 20:01:31,488 | INFO     | relais.tools         | Created tool registry: my_pipeline_tools
+2026-01-25 20:01:31,489 | INFO     | relais.pipeline      | Pipeline 'my_pipeline' created successfully
+2026-01-25 20:01:31,496 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:31,496 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:31,497 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:31,512 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:31,512 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:31,513 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:31,517 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:31,518 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:31,518 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:31,525 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:31,525 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:31,526 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:32,718 | INFO     | relais.tools         | Created tool registry: pipeline_tools
+2026-01-25 20:01:32,720 | INFO     | relais.tools         | Created tool registry: my_custom_tools
+2026-01-25 20:01:32,722 | INFO     | relais.tools         | Created tool registry: empty
+2026-01-25 20:01:32,725 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,726 | INFO     | relais.tools         | Registering tool: greet
+2026-01-25 20:01:32,726 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'The name to greet'}}, 'required': ['name']}
+2026-01-25 20:01:32,730 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,731 | INFO     | relais.tools         | Registering tool: simple
+2026-01-25 20:01:32,731 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,737 | INFO     | relais.tools         | Created tool registry: multi
+2026-01-25 20:01:32,738 | INFO     | relais.tools         | Registering tool: tool1
+2026-01-25 20:01:32,738 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,739 | INFO     | relais.tools         | Registering tool: tool2
+2026-01-25 20:01:32,739 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,740 | INFO     | relais.tools         | Registering tool: tool3
+2026-01-25 20:01:32,740 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,743 | INFO     | relais.tools         | Created tool registry: complex
+2026-01-25 20:01:32,744 | INFO     | relais.tools         | Registering tool: search
+2026-01-25 20:01:32,744 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'Search query'}, 'limit': {'type': 'integer', 'description': 'Max results'}, 'include_archived': {'type': 'boolean', 'description': 'Include archived items'}}, 'required': ['query', 'limit']}
+2026-01-25 20:01:32,747 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,747 | INFO     | relais.tools         | Registering tool: exists
+2026-01-25 20:01:32,747 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,751 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,755 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,755 | INFO     | relais.tools         | Registering tool: alpha
+2026-01-25 20:01:32,755 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,756 | INFO     | relais.tools         | Registering tool: beta
+2026-01-25 20:01:32,756 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,759 | INFO     | relais.tools         | Created tool registry: my_server
+2026-01-25 20:01:32,759 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:01:32,759 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,760 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:01:32,760 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,764 | INFO     | relais.tools         | Created tool registry: server
+2026-01-25 20:01:32,765 | INFO     | relais.tools         | Registering tool: a
+2026-01-25 20:01:32,765 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,766 | INFO     | relais.tools         | Registering tool: b
+2026-01-25 20:01:32,766 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,767 | INFO     | relais.tools         | Registering tool: c
+2026-01-25 20:01:32,767 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,770 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,774 | INFO     | relais.tools         | Created tool registry: tools
+2026-01-25 20:01:32,774 | INFO     | relais.tools         | Registering tool: custom
+2026-01-25 20:01:32,774 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,777 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,779 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,781 | INFO     | relais.tools         | Created tool registry: server
+2026-01-25 20:01:32,781 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:01:32,782 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,782 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:01:32,782 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,787 | INFO     | relais.tools         | Created tool registry: tools
+2026-01-25 20:01:32,787 | INFO     | relais.tools         | Registering tool: custom
+2026-01-25 20:01:32,787 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,792 | INFO     | relais.tools         | Created tool registry: my_tools
+2026-01-25 20:01:32,793 | INFO     | relais.tools         | Registering tool: test
+2026-01-25 20:01:32,793 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,794 | INFO     | relais.tools         | Creating MCP server 'my_tools' v1.0.0 with 1 tools
+2026-01-25 20:01:32,798 | INFO     | relais.tools         | Created tool registry: versioned
+2026-01-25 20:01:32,798 | INFO     | relais.tools         | Registering tool: t
+2026-01-25 20:01:32,798 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,799 | INFO     | relais.tools         | Creating MCP server 'versioned' v2.5.0 with 1 tools
+2026-01-25 20:01:32,804 | INFO     | relais.tools         | Created tool registry: empty
+2026-01-25 20:01:32,804 | INFO     | relais.tools         | Creating MCP server 'empty' v1.0.0 with 0 tools
+2026-01-25 20:01:32,812 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,812 | INFO     | relais.tools         | Registering tool: format_test
+2026-01-25 20:01:32,813 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,816 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,817 | INFO     | relais.tools         | Registering tool: capture
+2026-01-25 20:01:32,817 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,822 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,823 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:01:32,823 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,823 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:01:32,824 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,824 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a'}
+2026-01-25 20:01:32,827 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,827 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:01:32,828 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,828 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a'}
+2026-01-25 20:01:32,831 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,832 | INFO     | relais.tools         | Registering tool: allowed
+2026-01-25 20:01:32,832 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,833 | INFO     | relais.tools         | Registering tool: not_allowed
+2026-01-25 20:01:32,833 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,834 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'allowed'}
+2026-01-25 20:01:32,839 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,840 | INFO     | relais.tools         | Registering tool: protected
+2026-01-25 20:01:32,841 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'Name'}}, 'required': ['name']}
+2026-01-25 20:01:32,841 | DEBUG    | relais.tools         | Set current step: other_step, allowed tools: set()
+2026-01-25 20:01:32,842 | WARNING  | relais.tools         | Blocked unauthorized tool call: protected in step other_step
+2026-01-25 20:01:32,847 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,848 | INFO     | relais.tools         | Registering tool: allowed
+2026-01-25 20:01:32,848 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'Name'}}, 'required': ['name']}
+2026-01-25 20:01:32,849 | DEBUG    | relais.tools         | Set current step: correct_step, allowed tools: {'allowed'}
+2026-01-25 20:01:32,855 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,856 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:01:32,856 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,856 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:01:32,856 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,857 | INFO     | relais.tools         | Registering tool: tool_c
+2026-01-25 20:01:32,857 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,857 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a', 'tool_b'}
+2026-01-25 20:01:32,858 | WARNING  | relais.tools         | Blocked unauthorized tool call: tool_c in step step1
+2026-01-25 20:01:32,862 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:32,862 | INFO     | relais.tools         | Registering tool: any_tool
+2026-01-25 20:01:32,862 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:32,863 | DEBUG    | relais.tools         | Set current step: restricted_step, allowed tools: set()
+2026-01-25 20:01:32,863 | WARNING  | relais.tools         | Blocked unauthorized tool call: any_tool in step restricted_step
+2026-01-25 20:01:51,886 | INFO     | relais.orchestrator  | Registering pipeline 'my_pipeline' with 1 steps
+2026-01-25 20:01:51,891 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:01:51,895 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline1' with 1 steps
+2026-01-25 20:01:51,895 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:01:51,895 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline2' with 1 steps
+2026-01-25 20:01:51,896 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:01:51,896 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline3' with 1 steps
+2026-01-25 20:01:51,896 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:01:51,914 | DEBUG    | relais.orchestrator  | Hook data: 1 items
+2026-01-25 20:01:51,919 | WARNING  | relais.orchestrator  | Instruction not found: /tmp/pytest-of-ben/pytest-4/test_build_context_missing_ins0/instructions/nonexistent.md
+2026-01-25 20:01:51,943 | DEBUG    | relais.orchestrator  | Skipping permission error output for routing: unauthorized
+2026-01-25 20:01:51,944 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong_step
+2026-01-25 20:01:51,948 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong2
+2026-01-25 20:01:51,948 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong1
+2026-01-25 20:01:51,951 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: validation_error
+2026-01-25 20:01:51,952 | DEBUG    | relais.orchestrator  | Skipping permission error output for routing: perm_error
+2026-01-25 20:01:51,958 | INFO     | relais.orchestrator  | Registering pipeline 'test' with 1 steps
+2026-01-25 20:01:51,958 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:01:51,964 | INFO     | relais.orchestrator  | SDK options: max_turns=2, allowed_tools=['mcp__test__tool1']
+2026-01-25 20:01:51,965 | DEBUG    | relais.orchestrator  | Received message type: ResultMessage
+2026-01-25 20:01:51,966 | DEBUG    | relais.orchestrator  | Tool results for routing: []
+2026-01-25 20:01:51,966 | DEBUG    | relais.orchestrator  | Extracted routing data: None
+2026-01-25 20:01:51,973 | INFO     | relais.orchestrator  | SDK options: max_turns=5, allowed_tools=['mcp__test__tool1']
+2026-01-25 20:01:51,974 | DEBUG    | relais.orchestrator  | Received message type: ResultMessage
+2026-01-25 20:01:51,974 | DEBUG    | relais.orchestrator  | Tool results for routing: []
+2026-01-25 20:01:51,974 | DEBUG    | relais.orchestrator  | Extracted routing data: None
+2026-01-25 20:01:52,076 | INFO     | relais.orchestrator  | Spawning subagent 2dc3bb2f-dc83-40e8-9f71-228ff0d2e3e8 for 'research_step'
+2026-01-25 20:01:52,077 | INFO     | relais.orchestrator  | Subagent options: max_turns=5, model=sonnet, allowed_tools=['mcp__test__research_tool'], thinking=False
+2026-01-25 20:01:52,086 | INFO     | relais.orchestrator  | Spawning subagent 7872ea45-8f2d-411d-a8db-b7c587f9a1af for 'research'
+2026-01-25 20:01:52,087 | INFO     | relais.orchestrator  | Subagent options: max_turns=10, model=sonnet, allowed_tools=[], thinking=False
+2026-01-25 20:01:52,095 | INFO     | relais.orchestrator  | [run-123] Beginning pipeline execution from 'only'
+2026-01-25 20:01:52,095 | INFO     | relais.orchestrator  | [run-123] === Step 1: 'only' ===
+2026-01-25 20:01:52,095 | DEBUG    | relais.orchestrator  | [run-123] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:52,096 | INFO     | relais.orchestrator  | [run-123] Running in MAIN session (persistent)
+2026-01-25 20:01:52,096 | INFO     | relais.orchestrator  | [run-123] Step completed - turns=1, reason=success
+2026-01-25 20:01:52,096 | INFO     | relais.orchestrator  | [run-123] Routing: 'only' -> 'END'
+2026-01-25 20:01:52,098 | INFO     | relais.orchestrator  | [run-123] Pipeline completed after 1 steps
+2026-01-25 20:01:52,109 | INFO     | relais.orchestrator  | [run-456] Beginning pipeline execution from 'first'
+2026-01-25 20:01:52,109 | INFO     | relais.orchestrator  | [run-456] === Step 1: 'first' ===
+2026-01-25 20:01:52,109 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:52,110 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:01:52,110 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:01:52,110 | INFO     | relais.orchestrator  | [run-456] Routing: 'first' -> 'second'
+2026-01-25 20:01:52,110 | INFO     | relais.orchestrator  | [run-456] === Step 2: 'second' ===
+2026-01-25 20:01:52,110 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:52,111 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:01:52,111 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:01:52,111 | INFO     | relais.orchestrator  | [run-456] Routing: 'second' -> 'third'
+2026-01-25 20:01:52,111 | INFO     | relais.orchestrator  | [run-456] === Step 3: 'third' ===
+2026-01-25 20:01:52,111 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:52,111 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:01:52,112 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:01:52,112 | INFO     | relais.orchestrator  | [run-456] Routing: 'third' -> 'END'
+2026-01-25 20:01:52,112 | INFO     | relais.orchestrator  | [run-456] Pipeline completed after 3 steps
+2026-01-25 20:01:52,121 | INFO     | relais.orchestrator  | [run-789] Beginning pipeline execution from 'router'
+2026-01-25 20:01:52,122 | INFO     | relais.orchestrator  | [run-789] === Step 1: 'router' ===
+2026-01-25 20:01:52,122 | DEBUG    | relais.orchestrator  | [run-789] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:52,122 | INFO     | relais.orchestrator  | [run-789] Running in MAIN session (persistent)
+2026-01-25 20:01:52,122 | INFO     | relais.orchestrator  | [run-789] Step completed - turns=1, reason=success
+2026-01-25 20:01:52,122 | INFO     | relais.orchestrator  | [run-789] Routing: 'router' -> 'handle_b'
+2026-01-25 20:01:52,123 | INFO     | relais.orchestrator  | [run-789] === Step 2: 'handle_b' ===
+2026-01-25 20:01:52,123 | DEBUG    | relais.orchestrator  | [run-789] max_turns=10, tools=[], subagent=False
+2026-01-25 20:01:52,123 | INFO     | relais.orchestrator  | [run-789] Running in MAIN session (persistent)
+2026-01-25 20:01:52,123 | INFO     | relais.orchestrator  | [run-789] Step completed - turns=1, reason=success
+2026-01-25 20:01:52,123 | INFO     | relais.orchestrator  | [run-789] Routing: 'handle_b' -> 'END'
+2026-01-25 20:01:52,124 | INFO     | relais.orchestrator  | [run-789] Pipeline completed after 2 steps
+2026-01-25 20:01:52,131 | INFO     | relais.orchestrator  | [run] Beginning pipeline execution from 'missing'
+2026-01-25 20:01:52,181 | INFO     | relais.pipeline      | Creating pipeline 'test_pipeline' with 1 steps
+2026-01-25 20:01:52,181 | INFO     | relais.tools         | Created tool registry: test_pipeline_tools
+2026-01-25 20:01:52,182 | INFO     | relais.pipeline      | Pipeline 'test_pipeline' created successfully
+2026-01-25 20:01:52,190 | INFO     | relais.pipeline      | Creating pipeline 'full_pipeline' with 2 steps
+2026-01-25 20:01:52,190 | INFO     | relais.tools         | Created tool registry: full_pipeline_tools
+2026-01-25 20:01:52,190 | INFO     | relais.pipeline      | Pipeline 'full_pipeline' created successfully
+2026-01-25 20:01:52,195 | INFO     | relais.pipeline      | Creating pipeline 'registered' with 1 steps
+2026-01-25 20:01:52,195 | INFO     | relais.tools         | Created tool registry: registered_tools
+2026-01-25 20:01:52,196 | INFO     | relais.pipeline      | Pipeline 'registered' created successfully
+2026-01-25 20:01:52,201 | INFO     | relais.pipeline      | Creating pipeline 'tooled' with 1 steps
+2026-01-25 20:01:52,202 | INFO     | relais.tools         | Created tool registry: tooled_tools
+2026-01-25 20:01:52,202 | INFO     | relais.pipeline      | Pipeline 'tooled' created successfully
+2026-01-25 20:01:52,208 | INFO     | relais.pipeline      | Creating pipeline 'runner' with 1 steps
+2026-01-25 20:01:52,208 | INFO     | relais.tools         | Created tool registry: runner_tools
+2026-01-25 20:01:52,209 | INFO     | relais.pipeline      | Pipeline 'runner' created successfully
+2026-01-25 20:01:52,213 | INFO     | relais.pipeline      | Creating pipeline 'simple' with 1 steps
+2026-01-25 20:01:52,214 | INFO     | relais.tools         | Created tool registry: simple_tools
+2026-01-25 20:01:52,214 | INFO     | relais.pipeline      | Pipeline 'simple' created successfully
+2026-01-25 20:01:52,221 | INFO     | relais.pipeline      | Creating pipeline 'resumable' with 1 steps
+2026-01-25 20:01:52,221 | INFO     | relais.tools         | Created tool registry: resumable_tools
+2026-01-25 20:01:52,222 | INFO     | relais.pipeline      | Pipeline 'resumable' created successfully
+2026-01-25 20:01:52,227 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:52,227 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:52,228 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:52,235 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:52,235 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:52,236 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:52,241 | INFO     | relais.pipeline      | Creating pipeline 'my_pipeline' with 1 steps
+2026-01-25 20:01:52,241 | INFO     | relais.tools         | Created tool registry: my_pipeline_tools
+2026-01-25 20:01:52,241 | INFO     | relais.pipeline      | Pipeline 'my_pipeline' created successfully
+2026-01-25 20:01:52,250 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:52,250 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:52,251 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:52,263 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:52,264 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:52,265 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:52,272 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:52,272 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:52,273 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:52,278 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:01:52,278 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:01:52,279 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:01:53,208 | INFO     | relais.tools         | Created tool registry: pipeline_tools
+2026-01-25 20:01:53,210 | INFO     | relais.tools         | Created tool registry: my_custom_tools
+2026-01-25 20:01:53,213 | INFO     | relais.tools         | Created tool registry: empty
+2026-01-25 20:01:53,216 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,217 | INFO     | relais.tools         | Registering tool: greet
+2026-01-25 20:01:53,217 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'The name to greet'}}, 'required': ['name']}
+2026-01-25 20:01:53,220 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,220 | INFO     | relais.tools         | Registering tool: simple
+2026-01-25 20:01:53,220 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,223 | INFO     | relais.tools         | Created tool registry: multi
+2026-01-25 20:01:53,223 | INFO     | relais.tools         | Registering tool: tool1
+2026-01-25 20:01:53,223 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,224 | INFO     | relais.tools         | Registering tool: tool2
+2026-01-25 20:01:53,224 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,224 | INFO     | relais.tools         | Registering tool: tool3
+2026-01-25 20:01:53,224 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,228 | INFO     | relais.tools         | Created tool registry: complex
+2026-01-25 20:01:53,228 | INFO     | relais.tools         | Registering tool: search
+2026-01-25 20:01:53,229 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'Search query'}, 'limit': {'type': 'integer', 'description': 'Max results'}, 'include_archived': {'type': 'boolean', 'description': 'Include archived items'}}, 'required': ['query', 'limit']}
+2026-01-25 20:01:53,232 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,232 | INFO     | relais.tools         | Registering tool: exists
+2026-01-25 20:01:53,233 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,234 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,236 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,236 | INFO     | relais.tools         | Registering tool: alpha
+2026-01-25 20:01:53,237 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,237 | INFO     | relais.tools         | Registering tool: beta
+2026-01-25 20:01:53,237 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,240 | INFO     | relais.tools         | Created tool registry: my_server
+2026-01-25 20:01:53,240 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:01:53,240 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,240 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:01:53,241 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,243 | INFO     | relais.tools         | Created tool registry: server
+2026-01-25 20:01:53,244 | INFO     | relais.tools         | Registering tool: a
+2026-01-25 20:01:53,244 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,244 | INFO     | relais.tools         | Registering tool: b
+2026-01-25 20:01:53,245 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,245 | INFO     | relais.tools         | Registering tool: c
+2026-01-25 20:01:53,245 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,249 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,251 | INFO     | relais.tools         | Created tool registry: tools
+2026-01-25 20:01:53,252 | INFO     | relais.tools         | Registering tool: custom
+2026-01-25 20:01:53,252 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,254 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,255 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,257 | INFO     | relais.tools         | Created tool registry: server
+2026-01-25 20:01:53,258 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:01:53,258 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,259 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:01:53,259 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,263 | INFO     | relais.tools         | Created tool registry: tools
+2026-01-25 20:01:53,264 | INFO     | relais.tools         | Registering tool: custom
+2026-01-25 20:01:53,264 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,270 | INFO     | relais.tools         | Created tool registry: my_tools
+2026-01-25 20:01:53,270 | INFO     | relais.tools         | Registering tool: test
+2026-01-25 20:01:53,270 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,270 | INFO     | relais.tools         | Creating MCP server 'my_tools' v1.0.0 with 1 tools
+2026-01-25 20:01:53,274 | INFO     | relais.tools         | Created tool registry: versioned
+2026-01-25 20:01:53,274 | INFO     | relais.tools         | Registering tool: t
+2026-01-25 20:01:53,274 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,274 | INFO     | relais.tools         | Creating MCP server 'versioned' v2.5.0 with 1 tools
+2026-01-25 20:01:53,277 | INFO     | relais.tools         | Created tool registry: empty
+2026-01-25 20:01:53,277 | INFO     | relais.tools         | Creating MCP server 'empty' v1.0.0 with 0 tools
+2026-01-25 20:01:53,284 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,285 | INFO     | relais.tools         | Registering tool: format_test
+2026-01-25 20:01:53,285 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,288 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,289 | INFO     | relais.tools         | Registering tool: capture
+2026-01-25 20:01:53,289 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,291 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,292 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:01:53,292 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,292 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:01:53,292 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,293 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a'}
+2026-01-25 20:01:53,296 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,296 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:01:53,297 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,298 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a'}
+2026-01-25 20:01:53,300 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,301 | INFO     | relais.tools         | Registering tool: allowed
+2026-01-25 20:01:53,301 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,301 | INFO     | relais.tools         | Registering tool: not_allowed
+2026-01-25 20:01:53,301 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,302 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'allowed'}
+2026-01-25 20:01:53,304 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,305 | INFO     | relais.tools         | Registering tool: protected
+2026-01-25 20:01:53,305 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'Name'}}, 'required': ['name']}
+2026-01-25 20:01:53,305 | DEBUG    | relais.tools         | Set current step: other_step, allowed tools: set()
+2026-01-25 20:01:53,305 | WARNING  | relais.tools         | Blocked unauthorized tool call: protected in step other_step
+2026-01-25 20:01:53,308 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,308 | INFO     | relais.tools         | Registering tool: allowed
+2026-01-25 20:01:53,308 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'Name'}}, 'required': ['name']}
+2026-01-25 20:01:53,309 | DEBUG    | relais.tools         | Set current step: correct_step, allowed tools: {'allowed'}
+2026-01-25 20:01:53,312 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,314 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:01:53,314 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,314 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:01:53,314 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,314 | INFO     | relais.tools         | Registering tool: tool_c
+2026-01-25 20:01:53,314 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,315 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_b', 'tool_a'}
+2026-01-25 20:01:53,316 | WARNING  | relais.tools         | Blocked unauthorized tool call: tool_c in step step1
+2026-01-25 20:01:53,318 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:01:53,319 | INFO     | relais.tools         | Registering tool: any_tool
+2026-01-25 20:01:53,319 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:01:53,319 | DEBUG    | relais.tools         | Set current step: restricted_step, allowed tools: set()
+2026-01-25 20:01:53,319 | WARNING  | relais.tools         | Blocked unauthorized tool call: any_tool in step restricted_step
+2026-01-25 20:02:18,370 | INFO     | relais.orchestrator  | Registering pipeline 'my_pipeline' with 1 steps
+2026-01-25 20:02:18,375 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:02:18,380 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline1' with 1 steps
+2026-01-25 20:02:18,380 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:02:18,381 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline2' with 1 steps
+2026-01-25 20:02:18,381 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:02:18,381 | INFO     | relais.orchestrator  | Registering pipeline 'pipeline3' with 1 steps
+2026-01-25 20:02:18,381 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:02:18,401 | DEBUG    | relais.orchestrator  | Hook data: 1 items
+2026-01-25 20:02:18,404 | WARNING  | relais.orchestrator  | Instruction not found: /tmp/pytest-of-ben/pytest-5/test_build_context_missing_ins0/instructions/nonexistent.md
+2026-01-25 20:02:18,429 | DEBUG    | relais.orchestrator  | Skipping permission error output for routing: unauthorized
+2026-01-25 20:02:18,432 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong_step
+2026-01-25 20:02:18,436 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong2
+2026-01-25 20:02:18,436 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: wrong1
+2026-01-25 20:02:18,439 | DEBUG    | relais.orchestrator  | Skipping tool validation error for routing: validation_error
+2026-01-25 20:02:18,439 | DEBUG    | relais.orchestrator  | Skipping permission error output for routing: perm_error
+2026-01-25 20:02:18,450 | INFO     | relais.orchestrator  | Registering pipeline 'test' with 1 steps
+2026-01-25 20:02:18,450 | DEBUG    | relais.orchestrator  | Pipeline steps: ['s']
+2026-01-25 20:02:18,459 | INFO     | relais.orchestrator  | SDK options: max_turns=2, allowed_tools=['mcp__test__tool1']
+2026-01-25 20:02:18,460 | DEBUG    | relais.orchestrator  | Received message type: ResultMessage
+2026-01-25 20:02:18,461 | DEBUG    | relais.orchestrator  | Tool results for routing: []
+2026-01-25 20:02:18,461 | DEBUG    | relais.orchestrator  | Extracted routing data: None
+2026-01-25 20:02:18,466 | INFO     | relais.orchestrator  | SDK options: max_turns=5, allowed_tools=['mcp__test__tool1']
+2026-01-25 20:02:18,467 | DEBUG    | relais.orchestrator  | Received message type: ResultMessage
+2026-01-25 20:02:18,467 | DEBUG    | relais.orchestrator  | Tool results for routing: []
+2026-01-25 20:02:18,468 | DEBUG    | relais.orchestrator  | Extracted routing data: None
+2026-01-25 20:02:18,474 | INFO     | relais.orchestrator  | Spawning subagent 7bfa5755-df50-445d-b41e-e749a14a05c7 for 'research_step'
+2026-01-25 20:02:18,476 | INFO     | relais.orchestrator  | Subagent options: max_turns=5, model=sonnet, allowed_tools=['mcp__test__research_tool'], thinking=False
+2026-01-25 20:02:18,483 | INFO     | relais.orchestrator  | Spawning subagent dee56771-9049-4df2-be0c-e7672597f0d8 for 'research'
+2026-01-25 20:02:18,483 | INFO     | relais.orchestrator  | Subagent options: max_turns=10, model=sonnet, allowed_tools=[], thinking=False
+2026-01-25 20:02:18,492 | INFO     | relais.orchestrator  | [run-123] Beginning pipeline execution from 'only'
+2026-01-25 20:02:18,492 | INFO     | relais.orchestrator  | [run-123] === Step 1: 'only' ===
+2026-01-25 20:02:18,493 | DEBUG    | relais.orchestrator  | [run-123] max_turns=10, tools=[], subagent=False
+2026-01-25 20:02:18,493 | INFO     | relais.orchestrator  | [run-123] Running in MAIN session (persistent)
+2026-01-25 20:02:18,493 | INFO     | relais.orchestrator  | [run-123] Step completed - turns=1, reason=success
+2026-01-25 20:02:18,494 | INFO     | relais.orchestrator  | [run-123] Routing: 'only' -> 'END'
+2026-01-25 20:02:18,495 | INFO     | relais.orchestrator  | [run-123] Pipeline completed after 1 steps
+2026-01-25 20:02:18,503 | INFO     | relais.orchestrator  | [run-456] Beginning pipeline execution from 'first'
+2026-01-25 20:02:18,503 | INFO     | relais.orchestrator  | [run-456] === Step 1: 'first' ===
+2026-01-25 20:02:18,503 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:02:18,503 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:02:18,504 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:02:18,504 | INFO     | relais.orchestrator  | [run-456] Routing: 'first' -> 'second'
+2026-01-25 20:02:18,504 | INFO     | relais.orchestrator  | [run-456] === Step 2: 'second' ===
+2026-01-25 20:02:18,505 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:02:18,505 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:02:18,505 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:02:18,505 | INFO     | relais.orchestrator  | [run-456] Routing: 'second' -> 'third'
+2026-01-25 20:02:18,505 | INFO     | relais.orchestrator  | [run-456] === Step 3: 'third' ===
+2026-01-25 20:02:18,505 | DEBUG    | relais.orchestrator  | [run-456] max_turns=10, tools=[], subagent=False
+2026-01-25 20:02:18,506 | INFO     | relais.orchestrator  | [run-456] Running in MAIN session (persistent)
+2026-01-25 20:02:18,506 | INFO     | relais.orchestrator  | [run-456] Step completed - turns=1, reason=success
+2026-01-25 20:02:18,506 | INFO     | relais.orchestrator  | [run-456] Routing: 'third' -> 'END'
+2026-01-25 20:02:18,506 | INFO     | relais.orchestrator  | [run-456] Pipeline completed after 3 steps
+2026-01-25 20:02:18,515 | INFO     | relais.orchestrator  | [run-789] Beginning pipeline execution from 'router'
+2026-01-25 20:02:18,516 | INFO     | relais.orchestrator  | [run-789] === Step 1: 'router' ===
+2026-01-25 20:02:18,516 | DEBUG    | relais.orchestrator  | [run-789] max_turns=10, tools=[], subagent=False
+2026-01-25 20:02:18,516 | INFO     | relais.orchestrator  | [run-789] Running in MAIN session (persistent)
+2026-01-25 20:02:18,517 | INFO     | relais.orchestrator  | [run-789] Step completed - turns=1, reason=success
+2026-01-25 20:02:18,517 | INFO     | relais.orchestrator  | [run-789] Routing: 'router' -> 'handle_b'
+2026-01-25 20:02:18,517 | INFO     | relais.orchestrator  | [run-789] === Step 2: 'handle_b' ===
+2026-01-25 20:02:18,517 | DEBUG    | relais.orchestrator  | [run-789] max_turns=10, tools=[], subagent=False
+2026-01-25 20:02:18,518 | INFO     | relais.orchestrator  | [run-789] Running in MAIN session (persistent)
+2026-01-25 20:02:18,518 | INFO     | relais.orchestrator  | [run-789] Step completed - turns=1, reason=success
+2026-01-25 20:02:18,518 | INFO     | relais.orchestrator  | [run-789] Routing: 'handle_b' -> 'END'
+2026-01-25 20:02:18,518 | INFO     | relais.orchestrator  | [run-789] Pipeline completed after 2 steps
+2026-01-25 20:02:18,527 | INFO     | relais.orchestrator  | [run] Beginning pipeline execution from 'missing'
+2026-01-25 20:02:18,565 | INFO     | relais.pipeline      | Creating pipeline 'test_pipeline' with 1 steps
+2026-01-25 20:02:18,566 | INFO     | relais.tools         | Created tool registry: test_pipeline_tools
+2026-01-25 20:02:18,567 | INFO     | relais.pipeline      | Pipeline 'test_pipeline' created successfully
+2026-01-25 20:02:18,571 | INFO     | relais.pipeline      | Creating pipeline 'full_pipeline' with 2 steps
+2026-01-25 20:02:18,572 | INFO     | relais.tools         | Created tool registry: full_pipeline_tools
+2026-01-25 20:02:18,573 | INFO     | relais.pipeline      | Pipeline 'full_pipeline' created successfully
+2026-01-25 20:02:18,580 | INFO     | relais.pipeline      | Creating pipeline 'registered' with 1 steps
+2026-01-25 20:02:18,580 | INFO     | relais.tools         | Created tool registry: registered_tools
+2026-01-25 20:02:18,580 | INFO     | relais.pipeline      | Pipeline 'registered' created successfully
+2026-01-25 20:02:18,585 | INFO     | relais.pipeline      | Creating pipeline 'tooled' with 1 steps
+2026-01-25 20:02:18,585 | INFO     | relais.tools         | Created tool registry: tooled_tools
+2026-01-25 20:02:18,586 | INFO     | relais.pipeline      | Pipeline 'tooled' created successfully
+2026-01-25 20:02:18,593 | INFO     | relais.pipeline      | Creating pipeline 'runner' with 1 steps
+2026-01-25 20:02:18,593 | INFO     | relais.tools         | Created tool registry: runner_tools
+2026-01-25 20:02:18,594 | INFO     | relais.pipeline      | Pipeline 'runner' created successfully
+2026-01-25 20:02:18,599 | INFO     | relais.pipeline      | Creating pipeline 'simple' with 1 steps
+2026-01-25 20:02:18,599 | INFO     | relais.tools         | Created tool registry: simple_tools
+2026-01-25 20:02:18,600 | INFO     | relais.pipeline      | Pipeline 'simple' created successfully
+2026-01-25 20:02:18,605 | INFO     | relais.pipeline      | Creating pipeline 'resumable' with 1 steps
+2026-01-25 20:02:18,605 | INFO     | relais.tools         | Created tool registry: resumable_tools
+2026-01-25 20:02:18,606 | INFO     | relais.pipeline      | Pipeline 'resumable' created successfully
+2026-01-25 20:02:18,613 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:02:18,614 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:02:18,614 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:02:18,619 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:02:18,619 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:02:18,620 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:02:18,625 | INFO     | relais.pipeline      | Creating pipeline 'my_pipeline' with 1 steps
+2026-01-25 20:02:18,625 | INFO     | relais.tools         | Created tool registry: my_pipeline_tools
+2026-01-25 20:02:18,628 | INFO     | relais.pipeline      | Pipeline 'my_pipeline' created successfully
+2026-01-25 20:02:18,633 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:02:18,633 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:02:18,634 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:02:18,647 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:02:18,647 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:02:18,648 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:02:18,652 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:02:18,653 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:02:18,653 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:02:18,659 | INFO     | relais.pipeline      | Creating pipeline 'test' with 1 steps
+2026-01-25 20:02:18,660 | INFO     | relais.tools         | Created tool registry: test_tools
+2026-01-25 20:02:18,661 | INFO     | relais.pipeline      | Pipeline 'test' created successfully
+2026-01-25 20:02:19,567 | INFO     | relais.tools         | Created tool registry: pipeline_tools
+2026-01-25 20:02:19,569 | INFO     | relais.tools         | Created tool registry: my_custom_tools
+2026-01-25 20:02:19,571 | INFO     | relais.tools         | Created tool registry: empty
+2026-01-25 20:02:19,575 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,575 | INFO     | relais.tools         | Registering tool: greet
+2026-01-25 20:02:19,575 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'The name to greet'}}, 'required': ['name']}
+2026-01-25 20:02:19,578 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,579 | INFO     | relais.tools         | Registering tool: simple
+2026-01-25 20:02:19,579 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,581 | INFO     | relais.tools         | Created tool registry: multi
+2026-01-25 20:02:19,581 | INFO     | relais.tools         | Registering tool: tool1
+2026-01-25 20:02:19,582 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,582 | INFO     | relais.tools         | Registering tool: tool2
+2026-01-25 20:02:19,582 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,583 | INFO     | relais.tools         | Registering tool: tool3
+2026-01-25 20:02:19,583 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,585 | INFO     | relais.tools         | Created tool registry: complex
+2026-01-25 20:02:19,585 | INFO     | relais.tools         | Registering tool: search
+2026-01-25 20:02:19,586 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'Search query'}, 'limit': {'type': 'integer', 'description': 'Max results'}, 'include_archived': {'type': 'boolean', 'description': 'Include archived items'}}, 'required': ['query', 'limit']}
+2026-01-25 20:02:19,590 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,590 | INFO     | relais.tools         | Registering tool: exists
+2026-01-25 20:02:19,590 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,593 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,595 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,595 | INFO     | relais.tools         | Registering tool: alpha
+2026-01-25 20:02:19,595 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,596 | INFO     | relais.tools         | Registering tool: beta
+2026-01-25 20:02:19,596 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,598 | INFO     | relais.tools         | Created tool registry: my_server
+2026-01-25 20:02:19,598 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:02:19,598 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,599 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:02:19,599 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,601 | INFO     | relais.tools         | Created tool registry: server
+2026-01-25 20:02:19,602 | INFO     | relais.tools         | Registering tool: a
+2026-01-25 20:02:19,602 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,602 | INFO     | relais.tools         | Registering tool: b
+2026-01-25 20:02:19,602 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,603 | INFO     | relais.tools         | Registering tool: c
+2026-01-25 20:02:19,603 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,606 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,609 | INFO     | relais.tools         | Created tool registry: tools
+2026-01-25 20:02:19,609 | INFO     | relais.tools         | Registering tool: custom
+2026-01-25 20:02:19,610 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,611 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,613 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,615 | INFO     | relais.tools         | Created tool registry: server
+2026-01-25 20:02:19,615 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:02:19,615 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,616 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:02:19,616 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,618 | INFO     | relais.tools         | Created tool registry: tools
+2026-01-25 20:02:19,618 | INFO     | relais.tools         | Registering tool: custom
+2026-01-25 20:02:19,618 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,622 | INFO     | relais.tools         | Created tool registry: my_tools
+2026-01-25 20:02:19,623 | INFO     | relais.tools         | Registering tool: test
+2026-01-25 20:02:19,623 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,624 | INFO     | relais.tools         | Creating MCP server 'my_tools' v1.0.0 with 1 tools
+2026-01-25 20:02:19,628 | INFO     | relais.tools         | Created tool registry: versioned
+2026-01-25 20:02:19,628 | INFO     | relais.tools         | Registering tool: t
+2026-01-25 20:02:19,628 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,628 | INFO     | relais.tools         | Creating MCP server 'versioned' v2.5.0 with 1 tools
+2026-01-25 20:02:19,631 | INFO     | relais.tools         | Created tool registry: empty
+2026-01-25 20:02:19,631 | INFO     | relais.tools         | Creating MCP server 'empty' v1.0.0 with 0 tools
+2026-01-25 20:02:19,636 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,637 | INFO     | relais.tools         | Registering tool: format_test
+2026-01-25 20:02:19,637 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,643 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,644 | INFO     | relais.tools         | Registering tool: capture
+2026-01-25 20:02:19,644 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,650 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,651 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:02:19,651 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,652 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:02:19,652 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,653 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a'}
+2026-01-25 20:02:19,657 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,657 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:02:19,658 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,658 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a'}
+2026-01-25 20:02:19,661 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,661 | INFO     | relais.tools         | Registering tool: allowed
+2026-01-25 20:02:19,662 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,662 | INFO     | relais.tools         | Registering tool: not_allowed
+2026-01-25 20:02:19,662 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,663 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'allowed'}
+2026-01-25 20:02:19,665 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,666 | INFO     | relais.tools         | Registering tool: protected
+2026-01-25 20:02:19,666 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'Name'}}, 'required': ['name']}
+2026-01-25 20:02:19,666 | DEBUG    | relais.tools         | Set current step: other_step, allowed tools: set()
+2026-01-25 20:02:19,666 | WARNING  | relais.tools         | Blocked unauthorized tool call: protected in step other_step
+2026-01-25 20:02:19,669 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,670 | INFO     | relais.tools         | Registering tool: allowed
+2026-01-25 20:02:19,670 | DEBUG    | relais.tools         | Tool schema: {'type': 'object', 'properties': {'name': {'type': 'string', 'description': 'Name'}}, 'required': ['name']}
+2026-01-25 20:02:19,670 | DEBUG    | relais.tools         | Set current step: correct_step, allowed tools: {'allowed'}
+2026-01-25 20:02:19,673 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,674 | INFO     | relais.tools         | Registering tool: tool_a
+2026-01-25 20:02:19,674 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,674 | INFO     | relais.tools         | Registering tool: tool_b
+2026-01-25 20:02:19,674 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,674 | INFO     | relais.tools         | Registering tool: tool_c
+2026-01-25 20:02:19,675 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,675 | DEBUG    | relais.tools         | Set current step: step1, allowed tools: {'tool_a', 'tool_b'}
+2026-01-25 20:02:19,676 | WARNING  | relais.tools         | Blocked unauthorized tool call: tool_c in step step1
+2026-01-25 20:02:19,678 | INFO     | relais.tools         | Created tool registry: test
+2026-01-25 20:02:19,678 | INFO     | relais.tools         | Registering tool: any_tool
+2026-01-25 20:02:19,678 | DEBUG    | relais.tools         | Tool schema: {}
+2026-01-25 20:02:19,679 | DEBUG    | relais.tools         | Set current step: restricted_step, allowed tools: set()
+2026-01-25 20:02:19,679 | WARNING  | relais.tools         | Blocked unauthorized tool call: any_tool in step restricted_step

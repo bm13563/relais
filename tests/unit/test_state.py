@@ -18,6 +18,7 @@ class TestPipelineRunState:
             pipeline_name="my_pipeline",
             current_step="step1",
             status="running",
+            session="test-session",
             args={"key": "value"},
             conversation_history=[{"role": "user", "content": "hi"}],
             step_results={"step0": {"result": "done"}},
@@ -28,6 +29,7 @@ class TestPipelineRunState:
         assert state.pipeline_name == "my_pipeline"
         assert state.current_step == "step1"
         assert state.status == "running"
+        assert state.session == "test-session"
         assert state.args == {"key": "value"}
         assert state.conversation_history == [{"role": "user", "content": "hi"}]
         assert state.step_results == {"step0": {"result": "done"}}
@@ -37,12 +39,12 @@ class TestPipelineRunState:
         now = datetime.now()
         state1 = PipelineRunState(
             id="id", pipeline_name="p", current_step="s",
-            status="running", args={}, conversation_history=[],
+            status="running", session=None, args={}, conversation_history=[],
             step_results={}, created_at=now, updated_at=now
         )
         state2 = PipelineRunState(
             id="id", pipeline_name="p", current_step="s",
-            status="running", args={}, conversation_history=[],
+            status="running", session=None, args={}, conversation_history=[],
             step_results={}, created_at=now, updated_at=now
         )
         assert state1 == state2

@@ -697,40 +697,33 @@ class TestExecuteMainStep:
             cwd="/work"
         )
 
-        # We need to mock the ClaudeSDKClient
-        with patch('relais.executor.ClaudeSDKClient') as mock_sdk_class:
-            # Create mock client
-            mock_client = MagicMock()
-            mock_sdk_class.return_value.__aenter__.return_value = mock_client
+        # Create mock client
+        mock_client = MagicMock()
+        mock_client.query = AsyncMock()
 
-            # Mock the query method
-            async def mock_query(prompt):
-                pass
-            mock_client.query = mock_query
+        # Mock receive_response to return async generator
+        async def mock_receive():
+            result_msg = MagicMock()
+            result_msg.num_turns = 1
+            result_msg.session_id = "session-1"
+            result_msg.is_error = False
+            result_msg.usage = None
+            type(result_msg).__name__ = "ResultMessage"
+            yield result_msg
 
-            # Mock receive_response to return async generator
-            async def mock_receive():
-                result_msg = MagicMock()
-                result_msg.num_turns = 1
-                result_msg.session_id = "session-1"
-                result_msg.is_error = False
-                type(result_msg).__name__ = "ResultMessage"
-                yield result_msg
+        mock_client.receive_response.return_value = mock_receive()
 
-            mock_client.receive_response.return_value = mock_receive()
+        result = await orchestrator._execute_main_step(
+            step=step,
+            context="Test context",
+            client=mock_client,
+            config=config
+        )
 
-            result = await orchestrator._execute_main_step(
-                step=step,
-                context="Test context",
-                mcp_server=MagicMock(),
-                config=config
-            )
-
-            # Verify ClaudeSDKClient was instantiated with options
-            mock_sdk_class.assert_called_once()
-            call_kwargs = mock_sdk_class.call_args[1]
-            options = call_kwargs["options"]
-            assert options.max_turns == 5
+        # Verify query was called and result returned
+        mock_client.query.assert_awaited_once()
+        assert result.step_name == "main"
+        assert result.stop_reason == "success"
 
 
 class TestExecuteSubagentStep:
@@ -889,27 +882,29 @@ class TestExecutePipelineLoop:
             instructions_dir=str(test_instructions_dir)
         )
 
-        with patch.object(orchestrator, '_execute_main_step') as mock_execute:
-            mock_execute.return_value = StepExecutionResult(
-                step_name="only",
-                final_response="Done",
-                tool_results=[],
-                turns_used=1,
-                stop_reason="success"
-            )
+        mock_client = AsyncMock()
+        with patch.object(orchestrator, '_create_main_client', return_value=mock_client):
+            with patch.object(orchestrator, '_execute_main_step') as mock_execute:
+                mock_execute.return_value = StepExecutionResult(
+                    step_name="only",
+                    final_response="Done",
+                    tool_results=[],
+                    turns_used=1,
+                    stop_reason="success"
+                )
 
-            await orchestrator._execute_pipeline(
-                run_id="run-123",
-                config=config,
-                initial_input="Start",
-                args={}
-            )
+                await orchestrator._execute_pipeline(
+                    run_id="run-123",
+                    config=config,
+                    initial_input="Start",
+                    args={}
+                )
 
-            # Verify step was executed
-            mock_execute.assert_called_once()
+                # Verify step was executed
+                mock_execute.assert_called_once()
 
-            # Verify pipeline was completed
-            mock_state.complete_pipeline.assert_called_once_with("run-123")
+                # Verify pipeline was completed
+                mock_state.complete_pipeline.assert_called_once_with("run-123")
 
     @pytest.mark.asyncio
     async def test_multi_step_pipeline(self, test_instructions_dir):
@@ -964,16 +959,18 @@ class TestExecutePipelineLoop:
                 stop_reason="success"
             )
 
-        with patch.object(orchestrator, '_execute_main_step', side_effect=mock_execute):
-            await orchestrator._execute_pipeline(
-                run_id="run-456",
-                config=config,
-                initial_input="Start",
-                args={}
-            )
+        mock_client = AsyncMock()
+        with patch.object(orchestrator, '_create_main_client', return_value=mock_client):
+            with patch.object(orchestrator, '_execute_main_step', side_effect=mock_execute):
+                await orchestrator._execute_pipeline(
+                    run_id="run-456",
+                    config=config,
+                    initial_input="Start",
+                    args={}
+                )
 
-            # Verify all 3 steps were executed
-            assert call_count["count"] == 3
+                # Verify all 3 steps were executed
+                assert call_count["count"] == 3
 
     @pytest.mark.asyncio
     async def test_conditional_routing(self, test_instructions_dir):
@@ -1039,16 +1036,18 @@ class TestExecutePipelineLoop:
                     stop_reason="success"
                 )
 
-        with patch.object(orchestrator, '_execute_main_step', side_effect=mock_execute):
-            await orchestrator._execute_pipeline(
-                run_id="run-789",
-                config=config,
-                initial_input="Test",
-                args={}
-            )
+        mock_client = AsyncMock()
+        with patch.object(orchestrator, '_create_main_client', return_value=mock_client):
+            with patch.object(orchestrator, '_execute_main_step', side_effect=mock_execute):
+                await orchestrator._execute_pipeline(
+                    run_id="run-789",
+                    config=config,
+                    initial_input="Test",
+                    args={}
+                )
 
-            # Should have executed router -> handle_b
-            assert executed_steps == ["router", "handle_b"]
+                # Should have executed router -> handle_b
+                assert executed_steps == ["router", "handle_b"]
 
     @pytest.mark.asyncio
     async def test_step_not_found_raises(self, test_instructions_dir):
@@ -1067,10 +1066,231 @@ class TestExecutePipelineLoop:
             instructions_dir=str(test_instructions_dir)
         )
 
-        with pytest.raises(ValueError, match="Step not found"):
-            await orchestrator._execute_pipeline(
-                run_id="run",
-                config=config,
-                initial_input="",
-                args={}
-            )
+        mock_client = AsyncMock()
+        with patch.object(orchestrator, '_create_main_client', return_value=mock_client):
+            with pytest.raises(ValueError, match="Step not found"):
+                await orchestrator._execute_pipeline(
+                    run_id="run",
+                    config=config,
+                    initial_input="",
+                    args={}
+                )
+
+
+class TestStepExecutionResultMessages:
+    """Tests for StepExecutionResult with messages field."""
+
+    def test_result_with_messages(self):
+        """Test creating result with captured messages."""
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": [{"type": "text", "text": "Hi there!"}]}
+        ]
+        result = StepExecutionResult(
+            step_name="test",
+            final_response="Hi there!",
+            tool_results=[],
+            turns_used=1,
+            stop_reason="success",
+            messages=messages
+        )
+        assert result.messages == messages
+        assert len(result.messages) == 2
+
+    def test_result_messages_default_none(self):
+        """Test that messages defaults to None."""
+        result = StepExecutionResult(
+            step_name="test",
+            final_response="",
+            tool_results=[],
+            turns_used=1,
+            stop_reason="success"
+        )
+        assert result.messages is None
+
+
+class TestFormatConversationHistory:
+    """Tests for _format_conversation_history method."""
+
+    def test_format_empty_messages(self):
+        """Test formatting empty message list."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+        result = orchestrator._format_conversation_history([])
+        assert result == ""
+
+    def test_format_user_message(self):
+        """Test formatting user message."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+        messages = [{"role": "user", "content": "Hello, world!"}]
+        result = orchestrator._format_conversation_history(messages)
+        assert "[User Query]" in result
+        assert "Hello, world!" in result
+
+    def test_format_user_message_truncation(self):
+        """Test that long user messages are truncated."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+        long_content = "x" * 1000
+        messages = [{"role": "user", "content": long_content}]
+        result = orchestrator._format_conversation_history(messages)
+        assert "[truncated]" in result
+        assert len(result) < 1000
+
+    def test_format_assistant_text_message(self):
+        """Test formatting assistant text message."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+        messages = [
+            {"role": "assistant", "content": [{"type": "text", "text": "I can help with that."}]}
+        ]
+        result = orchestrator._format_conversation_history(messages)
+        assert "[Assistant]" in result
+        assert "I can help with that." in result
+
+    def test_format_assistant_tool_use(self):
+        """Test formatting assistant tool use message."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+        messages = [
+            {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "tool": "search", "input": {"query": "test"}}]
+            }
+        ]
+        result = orchestrator._format_conversation_history(messages)
+        assert "[Tool Call: search]" in result
+        assert "query" in result
+        assert "test" in result
+
+    def test_format_mixed_conversation(self):
+        """Test formatting a mixed conversation."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=Path("/instructions")
+        )
+        messages = [
+            {"role": "user", "content": "Search for cats"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "tool": "search", "input": {"q": "cats"}},
+                {"type": "text", "text": "Found results!"}
+            ]}
+        ]
+        result = orchestrator._format_conversation_history(messages)
+        assert "[User Query]" in result
+        assert "Search for cats" in result
+        assert "[Tool Call: search]" in result
+        assert "[Assistant]" in result
+        assert "Found results!" in result
+
+
+class TestBuildStepContextWithPreviousMessages:
+    """Tests for _build_step_context with previous_messages parameter."""
+
+    def test_context_includes_previous_conversation(self, test_instructions_dir):
+        """Test that previous messages are included in context."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=test_instructions_dir
+        )
+
+        step = PipelineStep(name="test", instruction="test_step")
+        config = PipelineConfig(
+            name="test_pipeline",
+            steps={"test": step},
+            start_step="test",
+            instructions_dir=str(test_instructions_dir)
+        )
+
+        previous_messages = [
+            {"role": "user", "content": "Previous query"},
+            {"role": "assistant", "content": [{"type": "text", "text": "Previous response"}]}
+        ]
+
+        context = orchestrator._build_step_context(
+            step=step,
+            args={},
+            previous_result=None,
+            initial_input="New input",
+            instructions_dir=test_instructions_dir,
+            config=config,
+            previous_messages=previous_messages
+        )
+
+        assert "[Previous Conversation]" in context
+        assert "Previous query" in context
+        assert "Previous response" in context
+
+    def test_context_without_previous_messages(self, test_instructions_dir):
+        """Test that context works without previous messages."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=test_instructions_dir
+        )
+
+        step = PipelineStep(name="test", instruction="test_step")
+        config = PipelineConfig(
+            name="test_pipeline",
+            steps={"test": step},
+            start_step="test",
+            instructions_dir=str(test_instructions_dir)
+        )
+
+        context = orchestrator._build_step_context(
+            step=step,
+            args={},
+            previous_result=None,
+            initial_input="Test",
+            instructions_dir=test_instructions_dir,
+            config=config,
+            previous_messages=None
+        )
+
+        assert "[Previous Conversation]" not in context
+
+    def test_context_with_empty_previous_messages(self, test_instructions_dir):
+        """Test that empty previous messages don't add section."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=test_instructions_dir
+        )
+
+        step = PipelineStep(name="test", instruction="test_step")
+        config = PipelineConfig(
+            name="test_pipeline",
+            steps={"test": step},
+            start_step="test",
+            instructions_dir=str(test_instructions_dir)
+        )
+
+        context = orchestrator._build_step_context(
+            step=step,
+            args={},
+            previous_result=None,
+            initial_input="Test",
+            instructions_dir=test_instructions_dir,
+            config=config,
+            previous_messages=[]
+        )
+
+        assert "[Previous Conversation]" not in context

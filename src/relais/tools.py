@@ -186,8 +186,10 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
     ]
 
     # Check if function already uses old-style args: dict signature
-    if len(param_names) == 1 and param_names[0] == "args":
-        # No wrapping needed
+    is_old_style = len(param_names) == 1 and param_names[0] == "args"
+
+    # If old-style and no validation needed, return unwrapped
+    if is_old_style and not (registry and tool_name):
         return func
 
     @functools.wraps(func)
@@ -203,6 +205,10 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
                         "text": error_msg
                     }]
                 }
+
+        # For old-style functions, just pass args through
+        if is_old_style:
+            return await func(args)
 
         # Extract values from args dict and pass as keyword arguments
         kwargs = {name: args.get(name) for name in param_names if name in args}
@@ -503,8 +509,11 @@ class ToolRegistry:
             tool_name: Name of the tool to check
 
         Returns:
-            True if allowed, False otherwise
+            True if allowed, False otherwise. If no step has been set, all tools are allowed.
         """
+        # If no step has been set, allow all tools (not in pipeline context)
+        if self._current_step_name is None:
+            return True
         return tool_name in self._current_allowed_tools
 
     @property
