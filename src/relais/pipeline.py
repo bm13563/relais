@@ -68,7 +68,8 @@ class Pipeline:
         instructions_dir: Path,
         tool_registry: ToolRegistry,
         state_manager: SQLiteStateManager,
-        orchestrator: PipelineOrchestrator
+        orchestrator: PipelineOrchestrator,
+        agents: Dict[str, 'PipelineAgent'] = None
     ):
         """Initialize the pipeline.
 
@@ -81,6 +82,7 @@ class Pipeline:
         self.tool_registry = tool_registry
         self.state_manager = state_manager
         self.orchestrator = orchestrator
+        self.agents = agents or {}
 
     @classmethod
     def create(
@@ -92,14 +94,13 @@ class Pipeline:
         instructions_dir: Path,
         db_config: dict,
         cwd: str = None,
-        # Model config
-        model: str = "opus",
-        thinking: bool = False,
-        grounded: bool = False,
         # Debug
         verbose: bool = False,
     ) -> Pipeline:
         """Create a new pipeline.
+
+        Steps can reference PipelineAgent instances directly via the agent parameter.
+        The pipeline automatically collects all agents from steps.
 
         Args:
             name: Unique pipeline identifier
@@ -108,37 +109,24 @@ class Pipeline:
             instructions_dir: Path to instruction markdown files
             db_config: Path to SQLite database file
             cwd: Working directory for file operations
-            model: Model for all steps (sonnet, opus, haiku)
-            thinking: If True, enable extended thinking with max budget
-            grounded: If True, constrain to pipeline data only (reduce hallucination)
             verbose: If True, print full step output to console
 
         Returns:
             Configured Pipeline instance
-
-        Raises:
-            ValueError: If subagent options used on non-subagent step
         """
         log.info(f"Creating pipeline '{name}' with {len(steps)} steps")
 
-        # Validate subagent options
-        for step_name, step in steps.items():
-            if not step.subagent:
-                if step.subagent_model is not None:
-                    raise ValueError(
-                        f"Step '{step_name}' has subagent_model but subagent=False. "
-                        "subagent_model is only valid when subagent=True."
-                    )
-                if step.subagent_grounded is not None:
-                    raise ValueError(
-                        f"Step '{step_name}' has subagent_grounded but subagent=False. "
-                        "subagent_grounded is only valid when subagent=True."
-                    )
-                if step.subagent_thinking is not None:
-                    raise ValueError(
-                        f"Step '{step_name}' has subagent_thinking but subagent=False. "
-                        "subagent_thinking is only valid when subagent=True."
-                    )
+        # Collect unique agents from all steps
+        agents = {}
+        for step in steps.values():
+            if step.agent is None:
+                raise ValueError(
+                    f"Step '{step.name}' is missing required 'agent' parameter. "
+                    f"Every step must have an explicit agent assigned."
+                )
+            agents[step.agent.name] = step.agent
+
+        log.debug(f"Collected {len(agents)} agents: {list(agents.keys())}")
 
         # Initialize components
         tool_registry = ToolRegistry(f"{name}_tools")
@@ -160,7 +148,6 @@ class Pipeline:
             tool_registry=tool_registry,
             state_manager=state_manager,
             instructions_dir=instructions_dir,
-            model=model,
             cwd=cwd
         )
 
@@ -170,9 +157,7 @@ class Pipeline:
             steps=steps,
             start_step=start_step,
             instructions_dir=str(instructions_dir),
-            model=model,
-            thinking=thinking,
-            grounded=grounded,
+            agents=agents,
             cwd=cwd,
             verbose=verbose,
         )
@@ -187,7 +172,8 @@ class Pipeline:
             instructions_dir=instructions_dir,
             tool_registry=tool_registry,
             state_manager=state_manager,
-            orchestrator=orchestrator
+            orchestrator=orchestrator,
+            agents=agents
         )
 
     def tool(

@@ -3,9 +3,12 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional, Any, Union
+from typing import Callable, List, Optional, Any, Union, TYPE_CHECKING
 
 from .utils import read_markdown
+
+if TYPE_CHECKING:
+    from .agent import PipelineAgent
 
 
 @dataclass
@@ -15,7 +18,6 @@ class PipelineStep:
     Attributes:
         name: Unique identifier for this step
         instruction: Name of the instruction file (without .md extension)
-        max_turns: Maximum API round-trips before stopping (default: 10)
         tools: List of tools available for this step. Can be tool names (strings)
                or @tool decorated functions
         hooks: List of callable functions that provide context data
@@ -24,21 +26,14 @@ class PipelineStep:
               - {"default": None} to end the pipeline
               - {"field": "field_name", "routes": [...], "default": "fallback"}
                 for conditional routing based on tool result
-        subagent: Whether to spawn an isolated subagent (no context sharing)
-        subagent_model: Model override for this subagent step
-        subagent_grounded: If True, inject grounding prompt for this subagent
-        subagent_thinking: Enable/disable extended thinking for this subagent (None inherits)
+        agent: PipelineAgent instance to use for this step.
     """
     name: str
     instruction: str
-    max_turns: int = 10
     tools: List[Union[str, Callable]] = field(default_factory=list)
     hooks: List[Callable[[], Any]] = field(default_factory=list)
     next: dict = field(default_factory=lambda: {"default": None})
-    subagent: bool = False
-    subagent_model: Optional[str] = None
-    subagent_grounded: Optional[bool] = None
-    subagent_thinking: Optional[bool] = None
+    agent: Optional['PipelineAgent'] = None
 
     def resolve_next(self, tool_result: dict) -> Optional[str]:
         """Determine the next step based on tool result.

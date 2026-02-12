@@ -10,9 +10,13 @@ from relais.executor import (
     PipelineOrchestrator,
     PipelineConfig,
     StepExecutionResult,
-    SubagentConfig
 )
 from relais.step import PipelineStep
+from relais.agent import PipelineAgent
+
+
+# Test agent used across all tests
+test_agent = PipelineAgent(name="test_agent", steps=None, model="opus")
 
 
 class TestPipelineConfig:
@@ -20,7 +24,7 @@ class TestPipelineConfig:
 
     def test_create_minimal_config(self):
         """Test creating config with minimal fields."""
-        steps = {"start": PipelineStep(name="start", instruction="test")}
+        steps = {"start": PipelineStep(name="start", instruction="test", agent=test_agent)}
         config = PipelineConfig(
             name="test",
             steps=steps,
@@ -29,24 +33,18 @@ class TestPipelineConfig:
         )
         assert config.name == "test"
         assert config.start_step == "start"
-        assert config.model == "sonnet"
-        assert config.grounded is False
         assert config.cwd is None
 
     def test_create_full_config(self):
         """Test creating config with all fields."""
-        steps = {"s": PipelineStep(name="s", instruction="test")}
+        steps = {"s": PipelineStep(name="s", instruction="test", agent=test_agent)}
         config = PipelineConfig(
             name="full",
             steps=steps,
             start_step="s",
             instructions_dir="/instructions",
-            model="opus",
-            grounded=True,
             cwd="/workdir"
         )
-        assert config.model == "opus"
-        assert config.grounded is True
         assert config.cwd == "/workdir"
 
 
@@ -84,22 +82,6 @@ class TestStepExecutionResult:
         assert result.session_id is None
 
 
-class TestSubagentConfig:
-    """Tests for SubagentConfig dataclass."""
-
-    def test_create_subagent_config(self):
-        """Test creating subagent config."""
-        step = PipelineStep(name="research", instruction="research")
-        config = SubagentConfig(
-            step=step,
-            context="Do research on topic X",
-            parent_pipeline_id="parent-123"
-        )
-        assert config.step == step
-        assert config.context == "Do research on topic X"
-        assert config.parent_pipeline_id == "parent-123"
-
-
 class TestPipelineOrchestratorCreation:
     """Tests for PipelineOrchestrator instantiation."""
 
@@ -116,7 +98,6 @@ class TestPipelineOrchestratorCreation:
 
         assert orchestrator.tool_registry == mock_registry
         assert orchestrator.state_manager == mock_state
-        assert orchestrator.model == "sonnet"
         assert orchestrator.pipelines == {}
 
     def test_create_orchestrator_with_options(self):
@@ -125,11 +106,9 @@ class TestPipelineOrchestratorCreation:
             tool_registry=MagicMock(),
             state_manager=MagicMock(),
             instructions_dir=Path("/instructions"),
-            model="opus",
             cwd="/workdir"
         )
 
-        assert orchestrator.model == "opus"
         assert orchestrator.cwd == "/workdir"
 
 
@@ -144,7 +123,7 @@ class TestRegisterPipeline:
             instructions_dir=Path("/instructions")
         )
 
-        steps = {"s": PipelineStep(name="s", instruction="test")}
+        steps = {"s": PipelineStep(name="s", instruction="test", agent=test_agent)}
         config = PipelineConfig(
             name="my_pipeline",
             steps=steps,
@@ -166,7 +145,7 @@ class TestRegisterPipeline:
         )
 
         for name in ["pipeline1", "pipeline2", "pipeline3"]:
-            steps = {"s": PipelineStep(name="s", instruction="test")}
+            steps = {"s": PipelineStep(name="s", instruction="test", agent=test_agent)}
             config = PipelineConfig(
                 name=name,
                 steps=steps,
@@ -189,7 +168,7 @@ class TestBuildStepContext:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step")
+        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -219,7 +198,7 @@ class TestBuildStepContext:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step")
+        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -247,7 +226,7 @@ class TestBuildStepContext:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step")
+        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -280,7 +259,8 @@ class TestBuildStepContext:
         step = PipelineStep(
             name="test",
             instruction="test_step",
-            hooks=[my_hook]
+            hooks=[my_hook],
+            agent=test_agent
         )
         config = PipelineConfig(
             name="test_pipeline",
@@ -309,7 +289,7 @@ class TestBuildStepContext:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="nonexistent")
+        step = PipelineStep(name="test", instruction="nonexistent", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -596,7 +576,7 @@ class TestStartPipeline:
             instructions_dir=Path("/instructions")
         )
 
-        steps = {"s": PipelineStep(name="s", instruction="test")}
+        steps = {"s": PipelineStep(name="s", instruction="test", agent=test_agent)}
         config = PipelineConfig(
             name="test",
             steps=steps,
@@ -610,12 +590,12 @@ class TestStartPipeline:
         # This would be better tested as integration test
 
 
-class TestExecuteMainStep:
-    """Tests for _execute_main_step method."""
+class TestExecuteStep:
+    """Tests for unified _execute_step method."""
 
     @pytest.mark.asyncio
-    async def test_execute_main_step_sets_current_step(self):
-        """Test that main step execution sets current step for tool validation."""
+    async def test_execute_step_sets_current_step(self):
+        """Test that step execution sets current step for tool validation."""
         mock_registry = MagicMock()
         mock_registry.get_allowed_tools.return_value = ["mcp__test__tool1"]
         mock_registry.name = "test"
@@ -626,11 +606,15 @@ class TestExecuteMainStep:
             instructions_dir=Path("/instructions")
         )
 
+        from relais.agent import PipelineAgent
+        test_agent_local = PipelineAgent(name="test_agent", steps=None)
+
         step = PipelineStep(
             name="test_step",
             instruction="test",
             max_turns=2,
-            tools=["tool1", "tool2"]
+            tools=["tool1", "tool2"],
+            agent=test_agent_local
         )
 
         config = PipelineConfig(
@@ -642,6 +626,11 @@ class TestExecuteMainStep:
 
         with patch('relais.executor.ClaudeSDKClient') as mock_sdk_class:
             mock_client = MagicMock()
+            mock_sdk_class.return_value = mock_client
+
+            async def mock_connect():
+                pass
+            mock_client.connect = mock_connect
 
             async def mock_query(prompt):
                 pass
@@ -650,26 +639,27 @@ class TestExecuteMainStep:
             async def mock_receive():
                 result_msg = MagicMock()
                 result_msg.num_turns = 1
-                result_msg.session_id = "session-1"
                 result_msg.is_error = False
                 type(result_msg).__name__ = "ResultMessage"
                 yield result_msg
 
             mock_client.receive_response.return_value = mock_receive()
 
-            await orchestrator._execute_main_step(
+            await orchestrator._execute_step(
                 step=step,
                 context="Test",
-                client=mock_client,
-                config=config
+                mcp_server=MagicMock(),
+                run_id="run-123",
+                config=config,
+                agent=test_agent_local
             )
 
             # Verify set_current_step was called with correct args
             mock_registry.set_current_step.assert_called_once_with("test_step", ["tool1", "tool2"])
 
     @pytest.mark.asyncio
-    async def test_execute_main_step_creates_options(self):
-        """Test that main step execution creates proper SDK options."""
+    async def test_execute_step_returns_result(self):
+        """Test that step execution returns proper result."""
         mock_registry = MagicMock()
         mock_registry.get_allowed_tools.return_value = ["mcp__test__tool1"]
         mock_registry.name = "test"
@@ -678,15 +668,18 @@ class TestExecuteMainStep:
             tool_registry=mock_registry,
             state_manager=MagicMock(),
             instructions_dir=Path("/instructions"),
-            model="sonnet",
             cwd="/work"
         )
+
+        from relais.agent import PipelineAgent
+        test_agent_local = PipelineAgent(name="test_agent", steps=None)
 
         step = PipelineStep(
             name="main",
             instruction="test",
             max_turns=5,
-            tools=["tool1"]
+            tools=["tool1"],
+            agent=test_agent_local
         )
 
         config = PipelineConfig(
@@ -694,72 +687,17 @@ class TestExecuteMainStep:
             steps={"main": step},
             start_step="main",
             instructions_dir="/instructions",
-            cwd="/work"
-        )
-
-        # Create mock client
-        mock_client = MagicMock()
-        mock_client.query = AsyncMock()
-
-        # Mock receive_response to return async generator
-        async def mock_receive():
-            result_msg = MagicMock()
-            result_msg.num_turns = 1
-            result_msg.session_id = "session-1"
-            result_msg.is_error = False
-            result_msg.usage = None
-            type(result_msg).__name__ = "ResultMessage"
-            yield result_msg
-
-        mock_client.receive_response.return_value = mock_receive()
-
-        result = await orchestrator._execute_main_step(
-            step=step,
-            context="Test context",
-            client=mock_client,
-            config=config
-        )
-
-        # Verify query was called and result returned
-        mock_client.query.assert_awaited_once()
-        assert result.step_name == "main"
-        assert result.stop_reason == "success"
-
-
-class TestExecuteSubagentStep:
-    """Tests for _execute_subagent_step method."""
-
-    @pytest.mark.asyncio
-    async def test_subagent_sets_current_step(self):
-        """Test that subagent execution sets current step for tool validation."""
-        mock_registry = MagicMock()
-        mock_registry.get_allowed_tools.return_value = ["mcp__test__research_tool"]
-        mock_registry.name = "test"
-
-        orchestrator = PipelineOrchestrator(
-            tool_registry=mock_registry,
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
-
-        step = PipelineStep(
-            name="research_step",
-            instruction="test",
-            max_turns=5,
-            tools=["research_tool"],
-            subagent=True
-        )
-
-        config = PipelineConfig(
-            name="test",
-            steps={"research_step": step},
-            start_step="research_step",
-            instructions_dir="/instructions"
+            cwd="/work",
+            agents={"test_agent": test_agent_local}
         )
 
         with patch('relais.executor.ClaudeSDKClient') as mock_sdk_class:
             mock_client = MagicMock()
-            mock_sdk_class.return_value.__aenter__.return_value = mock_client
+            mock_sdk_class.return_value = mock_client
+
+            async def mock_connect():
+                pass
+            mock_client.connect = mock_connect
 
             async def mock_query(prompt):
                 pass
@@ -767,26 +705,30 @@ class TestExecuteSubagentStep:
 
             async def mock_receive():
                 result_msg = MagicMock()
-                result_msg.num_turns = 2
+                result_msg.num_turns = 1
+                result_msg.is_error = False
+                result_msg.usage = None
                 type(result_msg).__name__ = "ResultMessage"
                 yield result_msg
 
             mock_client.receive_response.return_value = mock_receive()
 
-            await orchestrator._execute_subagent_step(
+            result = await orchestrator._execute_step(
                 step=step,
-                context="Research",
+                context="Test context",
                 mcp_server=MagicMock(),
                 run_id="run-123",
-                config=config
+                config=config,
+                agent=test_agent_local
             )
 
-            # Verify set_current_step was called with correct args
-            mock_registry.set_current_step.assert_called_once_with("research_step", ["research_tool"])
+            # Verify result returned
+            assert result.step_name == "main"
+            assert result.stop_reason == "success"
 
     @pytest.mark.asyncio
-    async def test_subagent_logs_to_db(self):
-        """Test that subagent execution logs to database."""
+    async def test_execute_step_logs_to_db(self):
+        """Test that step execution logs to database."""
         mock_registry = MagicMock()
         mock_registry.get_allowed_tools.return_value = []
         mock_registry.name = "test"
@@ -799,31 +741,36 @@ class TestExecuteSubagentStep:
             instructions_dir=Path("/instructions")
         )
 
+        from relais.agent import PipelineAgent
+        research_agent = PipelineAgent(name="research_agent", steps=None)
+
         step = PipelineStep(
             name="research",
             instruction="test",
             max_turns=10,
-            subagent=True
+            agent=research_agent
         )
 
         config = PipelineConfig(
             name="test",
             steps={"research": step},
             start_step="research",
-            instructions_dir="/instructions"
+            instructions_dir="/instructions",
+            agents={"research_agent": research_agent}
         )
 
         with patch('relais.executor.ClaudeSDKClient') as mock_sdk_class:
-            # Create mock client
             mock_client = MagicMock()
-            mock_sdk_class.return_value.__aenter__.return_value = mock_client
+            mock_sdk_class.return_value = mock_client
 
-            # Mock the query method
+            async def mock_connect():
+                pass
+            mock_client.connect = mock_connect
+
             async def mock_query(prompt):
                 pass
             mock_client.query = mock_query
 
-            # Mock receive_response to return async generator
             async def mock_receive():
                 result_msg = MagicMock()
                 result_msg.num_turns = 2
@@ -832,12 +779,13 @@ class TestExecuteSubagentStep:
 
             mock_client.receive_response.return_value = mock_receive()
 
-            await orchestrator._execute_subagent_step(
+            await orchestrator._execute_step(
                 step=step,
                 context="Research context",
                 mcp_server=MagicMock(),
                 run_id="parent-run-123",
-                config=config
+                config=config,
+                agent=research_agent
             )
 
             # Verify spawn was logged
@@ -872,7 +820,8 @@ class TestExecutePipelineLoop:
         step = PipelineStep(
             name="only",
             instruction="test_step",
-            next={"default": None}  # Ends pipeline
+            next={"default": None},  # Ends pipeline
+            agent=test_agent
         )
 
         config = PipelineConfig(
@@ -882,29 +831,27 @@ class TestExecutePipelineLoop:
             instructions_dir=str(test_instructions_dir)
         )
 
-        mock_client = AsyncMock()
-        with patch.object(orchestrator, '_create_main_client', return_value=mock_client):
-            with patch.object(orchestrator, '_execute_main_step') as mock_execute:
-                mock_execute.return_value = StepExecutionResult(
-                    step_name="only",
-                    final_response="Done",
-                    tool_results=[],
-                    turns_used=1,
-                    stop_reason="success"
-                )
+        with patch.object(orchestrator, '_execute_step') as mock_execute:
+            mock_execute.return_value = StepExecutionResult(
+                step_name="only",
+                final_response="Done",
+                tool_results=[],
+                turns_used=1,
+                stop_reason="success"
+            )
 
-                await orchestrator._execute_pipeline(
-                    run_id="run-123",
-                    config=config,
-                    initial_input="Start",
-                    args={}
-                )
+            await orchestrator._execute_pipeline(
+                run_id="run-123",
+                config=config,
+                initial_input="Start",
+                args={}
+            )
 
-                # Verify step was executed
-                mock_execute.assert_called_once()
+            # Verify step was executed
+            mock_execute.assert_called_once()
 
-                # Verify pipeline was completed
-                mock_state.complete_pipeline.assert_called_once_with("run-123")
+            # Verify pipeline was completed
+            mock_state.complete_pipeline.assert_called_once_with("run-123")
 
     @pytest.mark.asyncio
     async def test_multi_step_pipeline(self, test_instructions_dir):
@@ -926,17 +873,20 @@ class TestExecutePipelineLoop:
             "first": PipelineStep(
                 name="first",
                 instruction="test_step",
-                next={"default": "second"}
+                next={"default": "second"},
+                agent=test_agent
             ),
             "second": PipelineStep(
                 name="second",
                 instruction="test_step",
-                next={"default": "third"}
+                next={"default": "third"},
+                agent=test_agent
             ),
             "third": PipelineStep(
                 name="third",
                 instruction="test_step",
-                next={"default": None}
+                next={"default": None},
+                agent=test_agent
             )
         }
 
@@ -959,18 +909,16 @@ class TestExecutePipelineLoop:
                 stop_reason="success"
             )
 
-        mock_client = AsyncMock()
-        with patch.object(orchestrator, '_create_main_client', return_value=mock_client):
-            with patch.object(orchestrator, '_execute_main_step', side_effect=mock_execute):
-                await orchestrator._execute_pipeline(
-                    run_id="run-456",
-                    config=config,
-                    initial_input="Start",
-                    args={}
-                )
+        with patch.object(orchestrator, '_execute_step', side_effect=mock_execute):
+            await orchestrator._execute_pipeline(
+                run_id="run-456",
+                config=config,
+                initial_input="Start",
+                args={}
+            )
 
-                # Verify all 3 steps were executed
-                assert call_count["count"] == 3
+            # Verify all 3 steps were executed
+            assert call_count["count"] == 3
 
     @pytest.mark.asyncio
     async def test_conditional_routing(self, test_instructions_dir):
@@ -999,11 +947,12 @@ class TestExecutePipelineLoop:
                         {"equals": "B", "goto": "handle_b"}
                     ],
                     "default": "handle_default"
-                }
+                },
+                agent=test_agent
             ),
-            "handle_a": PipelineStep(name="handle_a", instruction="test_step", next={"default": None}),
-            "handle_b": PipelineStep(name="handle_b", instruction="test_step", next={"default": None}),
-            "handle_default": PipelineStep(name="handle_default", instruction="test_step", next={"default": None})
+            "handle_a": PipelineStep(name="handle_a", instruction="test_step", next={"default": None}, agent=test_agent),
+            "handle_b": PipelineStep(name="handle_b", instruction="test_step", next={"default": None}, agent=test_agent),
+            "handle_default": PipelineStep(name="handle_default", instruction="test_step", next={"default": None}, agent=test_agent)
         }
 
         config = PipelineConfig(
@@ -1036,24 +985,25 @@ class TestExecutePipelineLoop:
                     stop_reason="success"
                 )
 
-        mock_client = AsyncMock()
-        with patch.object(orchestrator, '_create_main_client', return_value=mock_client):
-            with patch.object(orchestrator, '_execute_main_step', side_effect=mock_execute):
-                await orchestrator._execute_pipeline(
-                    run_id="run-789",
-                    config=config,
-                    initial_input="Test",
-                    args={}
-                )
+        with patch.object(orchestrator, '_execute_step', side_effect=mock_execute):
+            await orchestrator._execute_pipeline(
+                run_id="run-789",
+                config=config,
+                initial_input="Test",
+                args={}
+            )
 
-                # Should have executed router -> handle_b
-                assert executed_steps == ["router", "handle_b"]
+            # Should have executed router -> handle_b
+            assert executed_steps == ["router", "handle_b"]
 
     @pytest.mark.asyncio
     async def test_step_not_found_raises(self, test_instructions_dir):
         """Test that missing step raises error."""
+        mock_registry = MagicMock()
+        mock_registry.create_mcp_server.return_value = MagicMock()
+
         orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
+            tool_registry=mock_registry,
             state_manager=MagicMock(),
             instructions_dir=test_instructions_dir
         )
@@ -1066,15 +1016,13 @@ class TestExecutePipelineLoop:
             instructions_dir=str(test_instructions_dir)
         )
 
-        mock_client = AsyncMock()
-        with patch.object(orchestrator, '_create_main_client', return_value=mock_client):
-            with pytest.raises(ValueError, match="Step not found"):
-                await orchestrator._execute_pipeline(
-                    run_id="run",
-                    config=config,
-                    initial_input="",
-                    args={}
-                )
+        with pytest.raises(ValueError, match="Step not found"):
+            await orchestrator._execute_pipeline(
+                run_id="run",
+                config=config,
+                initial_input="",
+                args={}
+            )
 
 
 class TestStepExecutionResultMessages:
@@ -1134,8 +1082,8 @@ class TestFormatConversationHistory:
         assert "[User Query]" in result
         assert "Hello, world!" in result
 
-    def test_format_user_message_truncation(self):
-        """Test that long user messages are truncated."""
+    def test_format_user_message_no_truncation(self):
+        """Test that long user messages are not truncated by formatter."""
         orchestrator = PipelineOrchestrator(
             tool_registry=MagicMock(),
             state_manager=MagicMock(),
@@ -1144,8 +1092,9 @@ class TestFormatConversationHistory:
         long_content = "x" * 1000
         messages = [{"role": "user", "content": long_content}]
         result = orchestrator._format_conversation_history(messages)
-        assert "[truncated]" in result
-        assert len(result) < 1000
+        # Messages are passed through without truncation
+        assert long_content in result
+        assert "[User Query]" in result
 
     def test_format_assistant_text_message(self):
         """Test formatting assistant text message."""
@@ -1212,7 +1161,7 @@ class TestBuildStepContextWithPreviousMessages:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step")
+        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -1247,7 +1196,7 @@ class TestBuildStepContextWithPreviousMessages:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step")
+        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -1275,7 +1224,7 @@ class TestBuildStepContextWithPreviousMessages:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step")
+        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},

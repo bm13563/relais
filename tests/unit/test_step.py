@@ -1,7 +1,6 @@
 """Unit tests for step.py - PipelineStep class."""
 
 import pytest
-from pathlib import Path
 
 from relais.step import PipelineStep
 
@@ -19,11 +18,8 @@ class TestPipelineStepCreation:
         assert step.instruction == "test"
         assert step.max_turns == 10  # default
         assert step.tools == []  # default
-        assert step.subagent is False  # default
         assert step.hooks == []  # default
-        assert step.subagent_model is None  # default
-        assert step.subagent_grounded is None  # default
-        assert step.subagent_thinking is None  # default
+        assert step.agent is None  # default
         assert step.next == {"default": None}  # default - ends pipeline
 
     def test_fully_configured_step(self):
@@ -36,21 +32,15 @@ class TestPipelineStepCreation:
             max_turns=15,
             tools=["tool1", "tool2", "tool3"],
             hooks=hooks,
-            subagent=True,
-            subagent_model="opus",
-            subagent_grounded=True,
-            subagent_thinking=True
+            agent="custom_agent"
         )
         assert step.name == "full"
         assert step.instruction == "full_instruction"
         assert step.next == {"default": "next_step"}
         assert step.max_turns == 15
         assert step.tools == ["tool1", "tool2", "tool3"]
-        assert step.subagent is True
         assert step.hooks == hooks
-        assert step.subagent_model == "opus"
-        assert step.subagent_grounded is True
-        assert step.subagent_thinking is True
+        assert step.agent == "custom_agent"
 
     def test_step_with_conditional_routing(self):
         """Test step with conditional routing configuration."""

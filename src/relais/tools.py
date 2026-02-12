@@ -208,11 +208,17 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
 
         # For old-style functions, just pass args through
         if is_old_style:
-            return await func(args)
+            result = await func(args)
+        else:
+            # Extract values from args dict and pass as keyword arguments
+            kwargs = {name: args.get(name) for name in param_names if name in args}
+            result = await func(**kwargs)
 
-        # Extract values from args dict and pass as keyword arguments
-        kwargs = {name: args.get(name) for name in param_names if name in args}
-        return await func(**kwargs)
+        # Capture result for cross-agent routing
+        if registry:
+            registry._last_tool_result = (tool_name, result)
+
+        return result
 
     return wrapper
 
@@ -328,6 +334,7 @@ class ToolRegistry:
         self._sdk_tools: List[Any] = []
         self._current_step_name: Optional[str] = None
         self._current_allowed_tools: set = set()
+        self._last_tool_result: Optional[tuple] = None  # (tool_name, result)
         log.info(f"Created tool registry: {name}")
 
     def tool(
@@ -520,3 +527,13 @@ class ToolRegistry:
     def name(self) -> str:
         """Get the registry/server name."""
         return self._name
+
+    def get_last_tool_result(self) -> Optional[tuple]:
+        """Get and clear the last tool result.
+
+        Returns:
+            Tuple of (tool_name, result) or None if no result captured.
+        """
+        result = self._last_tool_result
+        self._last_tool_result = None
+        return result

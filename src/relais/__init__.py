@@ -19,12 +19,13 @@ from .executor import (
     PipelineOrchestrator,
     PipelineConfig,
     StepExecutionResult,
-    SubagentConfig,
 )
 from .pipeline import Pipeline, cleanup_all_pipeline_states
 from .router import PipelineRouter
 from .utils import parse_command, read_markdown
 from .logging_config import setup_logging, get_logger
+from .agent import PipelineAgent
+from .agent_state import AgentStateManager
 
 __all__ = [
     # High-level API
@@ -36,7 +37,10 @@ __all__ = [
     "PipelineOrchestrator",
     "PipelineConfig",
     "StepExecutionResult",
-    "SubagentConfig",
+
+    # Agents
+    "PipelineAgent",
+    "AgentStateManager",
 
     # Tools
     "Annotated",

@@ -22,33 +22,26 @@ from claude_agent_sdk import (
     ResultMessage,
     TextBlock,
     ToolUseBlock,
-    ToolResultBlock,
 )
 
 from .step import PipelineStep
 from .tools import ToolRegistry
 from .state import SQLiteStateManager
+from .agent import PipelineAgent
+from .agent_state import AgentStateManager
 from .logging_config import get_logger
 
 log = get_logger('executor')
 
-# Grounding prompt injected when step.grounded=True to constrain model to pipeline data only
-GROUNDING_PROMPT = """[Pipeline: {pipeline_name} | Step: {step_name}]
+# Pipeline context injected at end of every step
+PIPELINE_STEP_INSTRUCTION = """[Pipeline Context]
+You are one step in a multi-step pipeline. Focus your thinking on the specific task for this step and call your tool when ready. Don't worry about any future steps, they will be handled by other agents, focus all of your thinking on this step.
 
-You are one step in a multi-step pipeline. Each step receives data from the previous step and passes results to the next.
+Call each tool exactly ONCE per step. Do not make multiple parallel tool calls.
 
-Your ONLY information sources:
-- [User Input]: The original request
-- [Previous Step Output]: Data from the prior step (if any)
-- Tool results: Responses from tools you call during THIS step
+After calling a tool, STOP and wait for the result. The pipeline will route you to the next step based on the tool's output. Making multiple tool calls will cause only the last one to be processed.
 
-Do not use knowledge from your training data. If the provided data is insufficient, state what is missing rather than filling gaps with outside knowledge. You are a data processor in a chain - transform what you receive, nothing more."""
-
-# Tool usage prompt injected into all pipeline steps
-TOOL_USAGE_PROMPT = """[Tool Usage Rules]
-IMPORTANT: Call each tool exactly ONCE per step. Do not make multiple parallel tool calls.
-
-After calling a tool, STOP and wait for the result. The pipeline will route you to the next step based on the tool's output. Making multiple tool calls will cause only the last one to be processed - the others will be lost."""
+The next step in the pipeline will only see the output of your tool call. So the entire focus of your effort should go into the tool call. If you have 10 available turns, use the tool after 2, then continue reasoning for another 8 turns, that will be 8 turns of context wasted. Call your tool once you have completed your reasoning."""
 
 
 @dataclass
@@ -60,9 +53,7 @@ class PipelineConfig:
         steps: Dictionary of step definitions keyed by name
         start_step: Name of the first step to execute
         instructions_dir: Path to instruction markdown files
-        model: Model for all steps (sonnet, opus, haiku)
-        thinking: If True, enable extended thinking with max budget
-        grounded: If True, all steps use grounded mode
+        agents: Dictionary of PipelineAgent instances keyed by name
         cwd: Working directory for file operations
         verbose: If True, print full step output to console
     """
@@ -70,11 +61,14 @@ class PipelineConfig:
     steps: Dict[str, PipelineStep]
     start_step: str
     instructions_dir: str
-    model: str = "sonnet"
-    thinking: bool = False
-    grounded: bool = False
+    agents: Dict[str, 'PipelineAgent'] = None
     cwd: Optional[str] = None
     verbose: bool = False
+
+    def __post_init__(self):
+        """Initialize agents dict if None."""
+        if self.agents is None:
+            self.agents = {}
 
 
 @dataclass
@@ -90,14 +84,6 @@ class StepExecutionResult:
     messages: Optional[List[dict]] = None  # Captured messages for context persistence
 
 
-@dataclass
-class SubagentConfig:
-    """Configuration for spawning a subagent."""
-    step: PipelineStep
-    context: str
-    parent_pipeline_id: str
-
-
 class PipelineOrchestrator:
     """Main orchestrator for pipeline execution using Claude Agent SDK.
 
@@ -105,11 +91,11 @@ class PipelineOrchestrator:
     subagent execution. The SDK handles max_turns internally.
 
     Execution flow:
-    1. Build context for current step (instructions, args, previous result)
+    1. Build context for current step (instructions, previous result)
     2. Execute step via SDK (main session or isolated query)
     3. Extract routing data from tool results
     4. Apply routing rules to determine next step
-    5. Persist state to SQLiteben@ben-Inspiron-3505:~/Documents/GitHub/tdl-ai$ uv run pipelines/eda.py
+    5. Persist state to SQLite
     6. Repeat until pipeline ends
     """
 
@@ -118,7 +104,6 @@ class PipelineOrchestrator:
         tool_registry: ToolRegistry,
         state_manager: SQLiteStateManager,
         instructions_dir: Path,
-        model: str = "sonnet",
         cwd: str = None
     ):
         """Initialize the orchestrator.
@@ -127,23 +112,77 @@ class PipelineOrchestrator:
             tool_registry: Registry with custom tools
             state_manager: SQLite state persistence
             instructions_dir: Path to instruction markdown files
-            model: Model for all steps (sonnet, opus, haiku)
             cwd: Working directory for file operations
         """
         self.tool_registry = tool_registry
         self.state_manager = state_manager
         self.instructions_dir = instructions_dir
-        self.model = model
         self.cwd = cwd
         self.pipelines: Dict[str, PipelineConfig] = {}
         self.log = get_logger('orchestrator')
         self.context_log_path = Path("pipeline.context")
+
+        # Create agent state manager (use same db path as state_manager with .agents suffix)
+        agent_db_path = state_manager.db_path.replace('.db', '.agents.db')
+        self.agent_state_manager = AgentStateManager.create(agent_db_path)
+        self.agent_state_manager.initialize_schema()
 
     def register_pipeline(self, config: PipelineConfig) -> None:
         """Register a pipeline configuration."""
         self.log.info(f"Registering pipeline '{config.name}' with {len(config.steps)} steps")
         self.log.debug(f"Pipeline steps: {list(config.steps.keys())}")
         self.pipelines[config.name] = config
+
+    def _get_or_create_agent(
+        self,
+        run_id: str,
+        step: PipelineStep,
+        config: PipelineConfig
+    ) -> PipelineAgent:
+        """Get or create an agent for a pipeline step.
+
+        Args:
+            run_id: UUID of the pipeline run
+            step: The current step
+            config: Pipeline configuration
+
+        Returns:
+            PipelineAgent instance for this step
+        """
+        # Get agent from step (required)
+        if step.agent is None:
+            raise ValueError(
+                f"Step '{step.name}' is missing required 'agent' parameter. "
+                f"Every step must have an explicit agent assigned."
+            )
+
+        agent_template = step.agent
+        agent_name = agent_template.name
+
+        # Try to load existing agent state from database
+        agent = self.agent_state_manager.load_agent(run_id, agent_name)
+
+        # If agent exists and is expired, clear it and create new one
+        if agent and agent.is_expired():
+            self.log.info(f"Agent '{agent_name}' expired, creating new instance")
+            self.agent_state_manager.delete_agent(run_id, agent_name)
+            agent = None
+
+        # If no agent state exists, clone from template
+        if not agent:
+            agent = PipelineAgent(
+                name=agent_template.name,
+                steps=agent_template.steps,
+                max_turns=agent_template.max_turns,
+                model=agent_template.model,
+                thinking=agent_template.thinking,
+            )
+            self.log.info(f"Created agent '{agent_name}' from template: steps={agent.steps}, max_turns={agent.max_turns}")
+
+            # Save new agent
+            self.agent_state_manager.save_agent(run_id, agent)
+
+        return agent
 
     def start_pipeline(
         self,
@@ -219,7 +258,7 @@ class PipelineOrchestrator:
 
         try:
             await self._execute_pipeline(
-                run_id, config, initial_input, args or {},
+                run_id, config, initial_input,
                 start_from_step=start_from_step,
                 session=session
             )
@@ -235,7 +274,6 @@ class PipelineOrchestrator:
         run_id: str,
         config: PipelineConfig,
         initial_input: str,
-        args: dict,
         start_from_step: str = None,
         session: str = None
     ) -> None:
@@ -253,6 +291,7 @@ class PipelineOrchestrator:
         previous_result = None
         step_count = 0
         accumulated_messages = []  # Accumulate messages across main session steps
+        run_agents: Dict[str, PipelineAgent] = {}  # Track agents within this run (preserves clients)
 
         # In session mode, load previous result and conversation history from stored state
         if session and start_from_step:
@@ -285,9 +324,6 @@ class PipelineOrchestrator:
 
         self.log.info(f"[{run_id}] Beginning pipeline execution from '{current_step_name}'")
 
-        # Create main session client that persists across non-subagent steps
-        main_client = await self._create_main_client(mcp_server, config)
-
         try:
             while current_step_name:
                 step_count += 1
@@ -296,14 +332,37 @@ class PipelineOrchestrator:
                     raise ValueError(f"Step not found: {current_step_name}")
 
                 self.log.info(f"[{run_id}] === Step {step_count}: '{current_step_name}' ===")
-                self.log.debug(f"[{run_id}] max_turns={step.max_turns}, tools={step.tools}, subagent={step.subagent}")
+
+                # Get the agent for this step - check run_agents first to preserve client
+                agent_name = step.agent.name
+                if agent_name in run_agents:
+                    agent = run_agents[agent_name]
+                    # Check if cached agent has expired - if so, create a fresh one
+                    if agent.is_expired():
+                        self.log.info(f"Agent '{agent_name}' expired, creating fresh instance")
+                        del run_agents[agent_name]
+                        agent = self._get_or_create_agent(run_id, step, config)
+                        run_agents[agent_name] = agent
+                    else:
+                        self.log.debug(f"Reusing agent '{agent_name}' from current run")
+                else:
+                    agent = self._get_or_create_agent(run_id, step, config)
+                    run_agents[agent_name] = agent
+
+                self.log.debug(f"[{run_id}] max_turns={agent.max_turns}, tools={step.tools}, agent={agent_name}")
 
                 # Build context prompt - always include initial_input so all steps can see original request
-                # In debug mode resume, inject previous conversation history for main session steps
-                prev_msgs = accumulated_messages if (session and not step.subagent) else None
+                # In debug mode resume, inject previous conversation history
+                if session and agent.is_persistent():
+                    prev_msgs = accumulated_messages
+                elif session and agent.conversation_history:
+                    # For isolated agents with steps > 1, use their stored conversation history
+                    prev_msgs = agent.conversation_history
+                else:
+                    prev_msgs = None
+                    
                 context = self._build_step_context(
                     step=step,
-                    args=args,
                     previous_result=previous_result,
                     initial_input=initial_input,
                     instructions_dir=Path(config.instructions_dir),
@@ -312,31 +371,27 @@ class PipelineOrchestrator:
                 )
 
                 # Log full context for debugging
-                self._log_step_context(current_step_name, context, step_count)
+                agent_step_info = None
+                if agent.steps is not None:
+                    current_agent_step = agent.steps - agent.steps_remaining + 1
+                    agent_step_info = f"{current_agent_step}/{agent.steps}"
+                self._log_step_context(current_step_name, context, step_count, agent_name, agent_step_info)
 
                 # Execute step
-                if step.subagent:
-                    self.log.info(f"[{run_id}] Running as SUBAGENT (isolated)")
-                    result = await self._execute_subagent_step(
-                        step=step,
-                        context=context,
-                        mcp_server=mcp_server,
-                        run_id=run_id,
-                        config=config
-                    )
-                else:
-                    self.log.info(f"[{run_id}] Running in MAIN session (persistent)")
-                    result = await self._execute_main_step(
-                        step=step,
-                        context=context,
-                        client=main_client,
-                        config=config
-                    )
+                self.log.info(f"[{run_id}] Running with agent '{agent_name}' (steps={agent.steps})")
+                result = await self._execute_step(
+                    step=step,
+                    context=context,
+                    mcp_server=mcp_server,
+                    run_id=run_id,
+                    config=config,
+                    agent=agent
+                )
 
                 self.log.info(f"[{run_id}] Step completed - turns={result.turns_used}, reason={result.stop_reason}")
 
-                # Accumulate messages from main session steps (not subagents)
-                if not step.subagent and result.messages:
+                # Accumulate messages for debug mode resume (persistent agents use accumulated_messages)
+                if agent.is_persistent() and result.messages:
                     accumulated_messages.extend(result.messages)
                     self.log.debug(f"Accumulated {len(result.messages)} messages, total now {len(accumulated_messages)}")
 
@@ -382,185 +437,74 @@ class PipelineOrchestrator:
                 print(f"  Total steps: {step_count}")
                 print(f"{'='*60}\n")
         finally:
-            # Always disconnect main client
-            await main_client.disconnect()
+            # Disconnect all agents that have clients
+            for agent in run_agents.values():
+                if agent.has_client():
+                    await agent.disconnect()
 
-    async def _create_main_client(
-        self,
-        mcp_server,
-        config: PipelineConfig
-    ) -> ClaudeSDKClient:
-        """Create and connect the main session client.
-
-        This client persists across all non-subagent steps to maintain
-        conversation context.
-
-        Note: allowed_tools is set to ALL tools from non-subagent steps since
-        we can't change it dynamically. Step instructions guide tool selection.
-        """
-        model = config.model or self.model
-
-        # Collect all tools from non-subagent steps
-        all_main_tools = []
-        for step in config.steps.values():
-            if not step.subagent and step.tools:
-                all_main_tools.extend(step.tools)
-        allowed_tools = self.tool_registry.get_allowed_tools(all_main_tools) if all_main_tools else None
-
-        options_kwargs = {
-            "model": model,
-            "mcp_servers": {self.tool_registry.name: mcp_server},
-            "allowed_tools": allowed_tools,
-            "permission_mode": "acceptEdits",
-            "cwd": config.cwd or self.cwd,
-        }
-        if config.thinking:
-            options_kwargs["max_thinking_tokens"] = 60000
-
-        options = ClaudeAgentOptions(**options_kwargs)
-        client = ClaudeSDKClient(options=options)
-        await client.connect()
-
-        self.log.info(f"Created main session client: model={model}, allowed_tools={allowed_tools}")
-        return client
-
-    async def _execute_main_step(
-        self,
-        step: PipelineStep,
-        context: str,
-        client: ClaudeSDKClient,
-        config: PipelineConfig
-    ) -> StepExecutionResult:
-        """Execute a step using the persistent main session client.
-
-        The client maintains conversation history across steps, so the model
-        remembers previous interactions.
-        """
-        # Set current step for tool validation
-        self.tool_registry.set_current_step(step.name, step.tools or [])
-
-        allowed_tools = self.tool_registry.get_allowed_tools(step.tools)
-
-        self.log.info(f"SDK options: max_turns={step.max_turns}, allowed_tools={allowed_tools}")
-
-        tool_calls_by_id = {}  # Track tool calls by ID for matching with results
-        tool_results = []
-        final_response = ""
-        turns_used = 0
-        session_id = None
-        captured_messages = []  # Capture messages for context persistence
-
-        # Send query to existing client (maintains conversation history)
-        await client.query(context)
-        # Record the user query as a message
-        captured_messages.append({"role": "user", "content": context})
-
-        async for message in client.receive_response():
-            self.log.debug(f"Received message type: {type(message).__name__}")
-
-            # Check for tool results in any message with content
-            if hasattr(message, 'content') and isinstance(message.content, list):
-                for block in message.content:
-                    if isinstance(block, ToolResultBlock):
-                        # Match result to its tool call by ID
-                        self.log.debug(f"ToolResultBlock attrs: {dir(block)}")
-                        tool_use_id = getattr(block, 'tool_use_id', None)
-                        self.log.debug(f"ToolResultBlock tool_use_id={tool_use_id}, content type={type(block.content).__name__}")
-                        if tool_use_id and tool_use_id in tool_calls_by_id:
-                            tool_calls_by_id[tool_use_id]["output"] = block.content
-                            self.log.debug(f"Tool result for {tool_use_id}: {type(block.content).__name__}")
-                        else:
-                            self.log.debug(f"Tool result without matching call: tool_use_id={tool_use_id}, known_ids={list(tool_calls_by_id.keys())}")
-
-            if isinstance(message, AssistantMessage):
-                # Capture assistant message for context persistence
-                msg_content = []
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        final_response = block.text
-                        msg_content.append({"type": "text", "text": block.text})
-                        self.log.debug(f"Text response: {block.text[:200]}...")
-                        if config.verbose:
-                            print(f"\n[{step.name}] {block.text}")
-                    elif isinstance(block, ToolUseBlock):
-                        self.log.info(f"Tool call: {block.name} (id={block.id})")
-                        msg_content.append({"type": "tool_use", "tool": block.name, "input": block.input})
-                        if config.verbose:
-                            print(f"\n[{step.name}] Tool: {block.name}")
-                            print(f"  Input: {block.input}")
-                        tool_call = {
-                            "id": block.id,
-                            "tool": block.name,
-                            "input": block.input
-                        }
-                        tool_calls_by_id[block.id] = tool_call
-                        tool_results.append(tool_call)
-                if msg_content:
-                    captured_messages.append({"role": "assistant", "content": msg_content})
-
-            elif isinstance(message, ResultMessage):
-                turns_used = message.num_turns
-                session_id = message.session_id
-                self.log.info(f"Result: turns={turns_used}, error={message.is_error}")
-                if config.verbose and message.usage:
-                    u = message.usage
-                    # Total input = non-cached + cache_creation + cache_read
-                    input_tokens = u.get('input_tokens', 0) + u.get('cache_creation_input_tokens', 0) + u.get('cache_read_input_tokens', 0)
-                    output_tokens = u.get('output_tokens', 0)
-                    cache_read = u.get('cache_read_input_tokens', 0)
-                    print(f"\n[{step.name}] Tokens: {input_tokens:,} in ({cache_read:,} cached) / {output_tokens:,} out")
-
-        routing_data = self._extract_routing_data(tool_results)
-        self.log.debug(f"Tool results for routing: {tool_results}")
-        self.log.debug(f"Extracted routing data: {routing_data}")
-
-        return StepExecutionResult(
-            step_name=step.name,
-            final_response=final_response,
-            tool_results=tool_results,
-            turns_used=turns_used,
-            stop_reason='success' if not tool_results or final_response else 'max_turns',
-            routing_data=routing_data,
-            session_id=session_id,
-            messages=captured_messages
-        )
-
-    async def _execute_subagent_step(
+    async def _execute_step(
         self,
         step: PipelineStep,
         context: str,
         mcp_server,
         run_id: str,
-        config: PipelineConfig
+        config: PipelineConfig,
+        agent: PipelineAgent
     ) -> StepExecutionResult:
-        """Execute a step as an isolated subagent.
+        """Execute a pipeline step with the given agent.
 
-        Uses a fresh ClaudeSDKClient instance which creates a new session,
-        providing isolation from the main conversation.
-
-        Note: We use ClaudeSDKClient instead of query() because query() does NOT
-        support custom MCP tools - only ClaudeSDKClient does.
+        Handles both persistent (steps=None) and limited (steps=N) agents:
+        - Creates/reuses client stored on agent.client
+        - Processes response and captures messages to agent.conversation_history
+        - Manages agent lifecycle (consume_step, expiration) for non-persistent agents
+        - Persists agent state to database
         """
         # Set current step for tool validation
         self.tool_registry.set_current_step(step.name, step.tools or [])
 
-        subagent_id = str(uuid.uuid4())
-        self.log.info(f"Spawning subagent {subagent_id} for '{step.name}'")
-
-        # Log to database
-        self.state_manager.log_subagent_spawn(
-            parent_pipeline_id=run_id,
-            subagent_id=subagent_id,
-            step_name=step.name
-        )
-
-        # Use subagent-specific overrides or fall back to pipeline config
-        model = step.subagent_model or config.model or self.model
-        thinking = step.subagent_thinking if step.subagent_thinking is not None else config.thinking
+        # Build client options from agent settings
+        model = agent.model or "opus"
+        thinking = agent.thinking or False
         allowed_tools = self.tool_registry.get_allowed_tools(step.tools)
 
+        # Check if agent already has a client with matching allowed_tools
+        # SDK doesn't support updating allowed_tools, so we must recreate client if tools change
+        reusing_client = agent.has_client()
+        inject_history = False
+        if reusing_client:
+            # Check if allowed_tools match what the client was created with
+            client_tools = getattr(agent, '_client_allowed_tools', None)
+            if client_tools != set(allowed_tools):
+                self.log.info(f"Agent '{agent.name}' tools changed ({client_tools} -> {set(allowed_tools)}), recreating client")
+                await agent.disconnect()
+                reusing_client = False
+                # When recreating client, we need to inject conversation history
+                inject_history = bool(agent.conversation_history)
+
+        # If we need to inject history, prepend it to the context
+        if inject_history:
+            history_text = self._format_conversation_history(agent.conversation_history)
+            if history_text:
+                context = f"[Previous Conversation]\n{history_text}\n\n{context}"
+                self.log.debug(f"Injected {len(agent.conversation_history)} messages into context for recreated client")
+
+        agent_instance_id = None
+
+        if reusing_client:
+            self.log.info(f"Continuing agent '{agent.name}' for '{step.name}' (steps_remaining={agent.steps_remaining})")
+        else:
+            agent_instance_id = str(uuid.uuid4())
+            self.log.info(f"Starting agent '{agent.name}' ({agent_instance_id}) for '{step.name}'")
+
+            # Log to database
+            self.state_manager.log_subagent_spawn(
+                parent_pipeline_id=run_id,
+                subagent_id=agent_instance_id,
+                step_name=step.name
+            )
+
         options_kwargs = {
-            "max_turns": step.max_turns,
+            "max_turns": agent.max_turns,
             "model": model,
             "mcp_servers": {self.tool_registry.name: mcp_server},
             "allowed_tools": allowed_tools,
@@ -572,54 +516,85 @@ class PipelineOrchestrator:
 
         options = ClaudeAgentOptions(**options_kwargs)
 
-        self.log.info(f"Subagent options: max_turns={step.max_turns}, model={model}, allowed_tools={allowed_tools}, thinking={thinking}")
+        self.log.info(f"Step options: max_turns={agent.max_turns}, model={model}, allowed_tools={allowed_tools}")
 
-        tool_calls_by_id = {}  # Track tool calls by ID for matching with results
+        # Initialize tracking
         tool_results = []
         final_response = ""
         turns_used = 0
+        captured_messages = []
 
-        # New ClaudeSDKClient instance = fresh session = isolation guaranteed
-        async with ClaudeSDKClient(options=options) as client:
+        # Record the user query
+        captured_messages.append({"role": "user", "content": context})
+
+        # Get or create client
+        if reusing_client:
+            client = agent.client
+            await client.query(context)
+        else:
+            client = ClaudeSDKClient(options=options)
+            await client.connect()
+            agent.set_client(client)
+            agent._client_allowed_tools = set(allowed_tools)  # Track tools for client reuse check
             await client.query(context)
 
+        try:
             async for message in client.receive_response():
-                # Check for tool results in any message with content (comes as UserMessage)
-                if hasattr(message, 'content') and isinstance(message.content, list):
-                    for block in message.content:
-                        if isinstance(block, ToolResultBlock):
-                            tool_use_id = getattr(block, 'tool_use_id', None)
-                            if tool_use_id and tool_use_id in tool_calls_by_id:
-                                tool_calls_by_id[tool_use_id]["output"] = block.content
-                                self.log.debug(f"[subagent] Tool result for {tool_use_id}")
-
                 if isinstance(message, AssistantMessage):
+                    msg_content = []  # For captured_messages (debug mode conversation history)
                     for block in message.content:
                         if isinstance(block, TextBlock):
-                            final_response = block.text
+                            final_response = block.text  # For logging
+                            msg_content.append({"type": "text", "text": block.text})
                             if config.verbose:
-                                print(f"\n[{step.name}:subagent] {block.text}")
+                                print(f"\n[{step.name}] {block.text}")
                         elif isinstance(block, ToolUseBlock):
-                            self.log.info(f"[subagent] Tool: {block.name} (id={block.id})")
+                            self.log.info(f"Tool call: {block.name} (id={block.id})")
+                            msg_content.append({"type": "tool_use", "tool": block.name, "input": block.input})
                             if config.verbose:
-                                print(f"\n[{step.name}:subagent] Tool: {block.name}")
+                                print(f"\n[{step.name}] Tool: {block.name}")
                                 print(f"  Input: {block.input}")
                             tool_call = {
                                 "id": block.id,
                                 "tool": block.name,
                                 "input": block.input
                             }
-                            tool_calls_by_id[block.id] = tool_call
-                            tool_results.append(tool_call)
+                            tool_results.append(tool_call)  # For logging
+                    if msg_content:
+                        captured_messages.append({"role": "assistant", "content": msg_content})
 
                 elif isinstance(message, ResultMessage):
-                    turns_used = message.num_turns
+                    turns_used = message.num_turns  # For logging
+                    self.log.info(f"Result: turns={turns_used}, error={message.is_error}")
                     if config.verbose and message.usage:
                         u = message.usage
                         input_tokens = u.get('input_tokens', 0) + u.get('cache_creation_input_tokens', 0) + u.get('cache_read_input_tokens', 0)
                         output_tokens = u.get('output_tokens', 0)
                         cache_read = u.get('cache_read_input_tokens', 0)
-                        print(f"\n[{step.name}:subagent] Tokens: {input_tokens:,} in ({cache_read:,} cached) / {output_tokens:,} out")
+                        print(f"\n[{step.name}] Tokens: {input_tokens:,} in ({cache_read:,} cached) / {output_tokens:,} out")
+
+        finally:
+            # Add captured messages to agent's conversation history
+            agent.add_messages(captured_messages)
+
+            # Handle lifecycle for non-persistent agents
+            if not agent.is_persistent():
+                agent.consume_step()
+                self.log.debug(f"Agent '{agent.name}' consumed step, remaining={agent.steps_remaining}")
+
+                if agent.is_expired():
+                    self.log.info(f"Agent '{agent.name}' expired, disconnecting client")
+                    await agent.disconnect()
+                    agent.client = None
+                    self.agent_state_manager.delete_agent(run_id, agent.name)
+                else:
+                    self.agent_state_manager.save_agent(run_id, agent)
+            else:
+                # Persistent agents still save state (for debug mode resume)
+                self.agent_state_manager.save_agent(run_id, agent)
+
+        # Get routing data from MCP tool capture
+        routing_data = self._get_routing_data_from_registry()
 
         result = StepExecutionResult(
             step_name=step.name,
@@ -627,26 +602,27 @@ class PipelineOrchestrator:
             tool_results=tool_results,
             turns_used=turns_used,
             stop_reason='success',
-            routing_data=self._extract_routing_data(tool_results)
+            routing_data=routing_data,
+            messages=captured_messages
         )
 
-        # Log completion
-        self.state_manager.log_subagent_complete(
-            subagent_id=subagent_id,
-            result={
-                'final_response': final_response,
-                'tool_results': tool_results,
-                'routing_data': result.routing_data
-            },
-            turns_used=turns_used
-        )
+        # Log completion if we started a new agent instance
+        if agent_instance_id:
+            self.state_manager.log_subagent_complete(
+                subagent_id=agent_instance_id,
+                result={
+                    'final_response': final_response,
+                    'tool_results': tool_results,
+                    'routing_data': result.routing_data
+                },
+                turns_used=turns_used
+            )
 
         return result
 
     def _build_step_context(
         self,
         step: PipelineStep,
-        args: dict,
         previous_result: dict,
         initial_input: str,
         instructions_dir: Path,
@@ -662,21 +638,6 @@ class PipelineOrchestrator:
             if conversation_text:
                 sections.append(f"[Previous Conversation]\n{conversation_text}")
 
-        # Determine if grounded: subagent steps use subagent_grounded, others use config.grounded
-        if step.subagent:
-            is_grounded = step.subagent_grounded if step.subagent_grounded is not None else config.grounded
-        else:
-            is_grounded = config.grounded
-
-        if is_grounded:
-            sections.append(GROUNDING_PROMPT.format(
-                pipeline_name=config.name,
-                step_name=step.name
-            ))
-
-        # Always include tool usage rules
-        sections.append(TOOL_USAGE_PROMPT)
-
         if initial_input:
             sections.append(f"[User Input]\n{initial_input}")
 
@@ -684,9 +645,6 @@ class PipelineOrchestrator:
             sections.append(f"[Previous Step Output]\n{json.dumps(previous_result, indent=2)}")
 
         sections.append(f"[Current Step]\n{step.name}")
-
-        if args:
-            sections.append(f"[Pipeline Args]\n{json.dumps(args, indent=2)}")
 
         # Execute hooks
         hook_data = step.get_hook_data()
@@ -702,57 +660,27 @@ class PipelineOrchestrator:
         else:
             self.log.warning(f"Instruction not found: {instruction_path}")
 
+        # Always end with pipeline step instruction
+        sections.append(PIPELINE_STEP_INSTRUCTION)
+
         return "\n\n".join(sections)
 
-    def _extract_routing_data(self, tool_results: List[dict]) -> Optional[dict]:
-        """Extract routing data from the last tool result that has successful output.
+    def _get_routing_data_from_registry(self) -> Optional[dict]:
+        """Get routing data from MCP tool capture.
 
-        Note: Not all tool calls may have output - the SDK only executes allowed tools.
-        Tool calls to unauthorized tools return permission error messages which we skip.
+        This is the preferred method - the MCP wrapper captures tool output directly.
         """
-        if not tool_results:
+        captured = self.tool_registry.get_last_tool_result()
+        if not captured or not isinstance(captured, tuple) or len(captured) != 2:
             return None
 
-        # Find the last tool result that has successful output (not a permission error)
-        last_result = None
-        for result in reversed(tool_results):
-            if "output" in result:
-                output = result.get("output")
-                # Skip permission error messages from unauthorized tool calls
-                if isinstance(output, str) and "requested permissions to use" in output:
-                    self.log.debug(f"Skipping permission error output for routing: {result.get('tool')}")
-                    continue
-                # Skip tool validation errors (tools called from wrong pipeline step)
-                if isinstance(output, dict) and "content" in output:
-                    content = output.get("content", [])
-                    if content and isinstance(content[0], dict):
-                        text = content[0].get("text", "")
-                        if "is only available in specific pipeline steps" in text:
-                            self.log.debug(f"Skipping tool validation error for routing: {result.get('tool')}")
-                            continue
-                last_result = result
-                break
+        tool_name, result = captured
+        self.log.debug(f"Got routing data from registry for {tool_name}: {str(result)[:200]}")
 
-        if not last_result:
-            return None
-
-        output = last_result.get("output")
-
-        # Handle SDK tool result format
-        if isinstance(output, str):
-            try:
-                return json.loads(output)
-            except json.JSONDecodeError:
-                return {"response": output}
-        elif isinstance(output, dict):
-            # Check for MCP wrapper format {"content": [...]}
-            if "content" in output and isinstance(output["content"], list):
-                return self._extract_from_mcp_content(output["content"])
-            return output
-        elif isinstance(output, list):
-            # MCP tool result content format
-            return self._extract_from_mcp_content(output)
-        return None
+        # Handle MCP wrapper format {"content": [...]}
+        if isinstance(result, dict) and "content" in result:
+            return self._extract_from_mcp_content(result["content"])
+        return result
 
     def _extract_from_mcp_content(self, content_list: list) -> Optional[dict]:
         """Extract routing data from MCP content format."""
@@ -802,19 +730,22 @@ class PipelineOrchestrator:
 
         return "\n\n".join(lines)
 
-    def _log_step_context(self, step_name: str, context: str, step_num: int) -> None:
+    def _log_step_context(self, step_name: str, context: str, step_num: int, agent_name: str, agent_step: str = None) -> None:
         """Log the full context being sent to a step for debugging.
 
         Args:
             step_name: Name of the step
             context: The full context string
             step_num: The step number in the pipeline
+            agent_name: Name of the agent executing this step
+            agent_step: Agent step info like "2/3" for limited agents
         """
         try:
             with open(self.context_log_path, 'a', encoding='utf-8') as f:
                 separator = "=" * 80
                 f.write(f"\n{separator}\n")
-                f.write(f"STEP {step_num}: {step_name}\n")
+                agent_info = f"{agent_name} {agent_step}" if agent_step else agent_name
+                f.write(f"STEP {step_num}: {step_name} ({agent_info})\n")
                 f.write(f"{separator}\n\n")
                 f.write(context)
                 f.write(f"\n\n{separator}\n\n")
