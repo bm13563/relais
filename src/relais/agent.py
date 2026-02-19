@@ -7,7 +7,7 @@ of steps.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from typing import Callable, Optional, List, Dict, Any, Union
 
 
 @dataclass
@@ -16,6 +16,8 @@ class PipelineAgent:
 
     Attributes:
         name: Unique identifier for this agent
+        tools: List of tools available to this agent. Can be tool names (strings)
+               or @tool decorated functions. These are registered with the SDK client.
         steps: Number of steps this agent is available for. None means persistent
                across all steps. Integer N means available for N steps then expires.
         max_turns: Maximum API round-trips per step before stopping (default: 10)
@@ -27,6 +29,7 @@ class PipelineAgent:
     """
 
     name: str
+    tools: List[Union[str, Callable]] = field(default_factory=list)
     steps: Optional[int] = None
     max_turns: int = 2
     model: Optional[str] = "opus"
@@ -160,6 +163,7 @@ class PipelineAgent:
             return False
         return (
             self.name == other.name
+            and self.tools == other.tools
             and self.steps == other.steps
             and self.model == other.model
             and self.thinking == other.thinking
@@ -171,8 +175,17 @@ class PipelineAgent:
         Returns:
             Dictionary containing agent state
         """
+        # Convert tools to names (handles both strings and @tool decorated functions)
+        tool_names = []
+        for t in self.tools:
+            if callable(t) and hasattr(t, '_tool_name'):
+                tool_names.append(t._tool_name)
+            elif isinstance(t, str):
+                tool_names.append(t)
+
         return {
             "name": self.name,
+            "tools": tool_names,
             "steps": self.steps,
             "steps_remaining": self.steps_remaining,
             "max_turns": self.max_turns,
@@ -193,6 +206,7 @@ class PipelineAgent:
         """
         agent = cls(
             name=data["name"],
+            tools=data.get("tools", []),
             steps=data.get("steps"),
             max_turns=data.get("max_turns", 10),
             model=data.get("model"),

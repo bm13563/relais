@@ -1,6 +1,8 @@
 """Pipeline step definition with SDK-compatible configuration."""
 
 from __future__ import annotations
+import asyncio
+import inspect
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional, Any, Union, TYPE_CHECKING
@@ -62,12 +64,22 @@ class PipelineStep:
         """
         return read_markdown(f'{self.instruction}.md', instructions_dir)
 
-    def get_hook_data(self) -> List[Any]:
+    async def get_hook_data(self) -> List[Any]:
         """Execute all hooks and collect their data.
+
+        Supports both sync and async hooks.
 
         Returns:
             List of results from each hook function
         """
         if not self.hooks:
             return []
-        return [hook() for hook in self.hooks]
+
+        results = []
+        for hook in self.hooks:
+            if inspect.iscoroutinefunction(hook):
+                result = await hook()
+            else:
+                result = hook()
+            results.append(result)
+        return results

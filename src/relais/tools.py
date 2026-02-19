@@ -36,6 +36,9 @@ class ToolResponse:
         message: Optional human-readable message for the model to see.
         limit: Optional character limit for the response. If set, truncates the
                JSON output to this many characters with a truncation notice.
+        images: Optional list of images to include in the response. Each image
+                is a tuple of (base64_data, mime_type). Images are sent to the
+                model but not preserved in routing data between steps.
 
     Example:
         @tool("run_query", "Execute a SQL query")
@@ -51,10 +54,21 @@ class ToolResponse:
                     data={"success": False, "error": str(e)},
                     message=f"Query failed: {e}"
                 ).to_mcp()
+
+    Example with image:
+        @tool("screenshot", "Take a screenshot")
+        async def screenshot() -> dict:
+            img_bytes = take_screenshot()
+            img_b64 = base64.b64encode(img_bytes).decode()
+            return ToolResponse(
+                data={"status": "screenshot_taken"},
+                images=[(img_b64, "image/png")]
+            ).to_mcp()
     """
     data: dict
     message: str = ""
     limit: int = None
+    images: List[tuple] = None  # List of (base64_data, mime_type)
 
     def to_mcp(self) -> dict:
         """Convert to MCP tool response format.
@@ -62,19 +76,27 @@ class ToolResponse:
         Returns the data as JSON inside the MCP content structure,
         ensuring routing fields are preserved through the MCP layer.
         If limit is set, truncates the output with a notice.
+        Images are included as separate content blocks.
         """
         import json
-        text = json.dumps(self.data, default=str)
+        content = []
 
+        # Add text content (routing data as JSON)
+        text = json.dumps(self.data, default=str)
         if self.limit and len(text) > self.limit:
             text = text[:self.limit] + f"\n\n[TRUNCATED - output exceeded {self.limit} chars]"
+        content.append({"type": "text", "text": text})
 
-        return {
-            "content": [{
-                "type": "text",
-                "text": text
-            }]
-        }
+        # Add image content blocks
+        if self.images:
+            for img_data, mime_type in self.images:
+                content.append({
+                    "type": "image",
+                    "data": img_data,
+                    "mimeType": mime_type
+                })
+
+        return {"content": content}
 
 
 # Type mapping from Python types to JSON Schema types
@@ -194,6 +216,8 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
 
     @functools.wraps(func)
     async def wrapper(args: dict) -> dict:
+        import traceback
+
         # Validate tool access if registry provided
         if registry and tool_name:
             if not registry.is_tool_allowed(tool_name):
@@ -206,19 +230,38 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
                     }]
                 }
 
-        # For old-style functions, just pass args through
-        if is_old_style:
-            result = await func(args)
-        else:
-            # Extract values from args dict and pass as keyword arguments
-            kwargs = {name: args.get(name) for name in param_names if name in args}
-            result = await func(**kwargs)
+        try:
+            # For old-style functions, just pass args through
+            if is_old_style:
+                result = await func(args)
+            else:
+                # Extract values from args dict and pass as keyword arguments
+                kwargs = {name: args.get(name) for name in param_names if name in args}
+                result = await func(**kwargs)
 
-        # Capture result for cross-agent routing
-        if registry:
-            registry._last_tool_result = (tool_name, result)
+            # Capture result for cross-agent routing
+            if registry:
+                registry._last_tool_result = (tool_name, result)
 
-        return result
+            return result
+
+        except Exception as e:
+            error_msg = f"Tool '{tool_name}' failed: {e}\n{traceback.format_exc()}"
+            log.error(error_msg)
+
+            error_result = {
+                "content": [{
+                    "type": "text",
+                    "text": error_msg
+                }],
+                "error": str(e),
+            }
+
+            # Still capture error result for routing
+            if registry:
+                registry._last_tool_result = (tool_name, error_result)
+
+            return error_result
 
     return wrapper
 

@@ -132,11 +132,25 @@ class Pipeline:
         tool_registry = ToolRegistry(f"{name}_tools")
         state_manager = SQLiteStateManager.create(db_config)
 
-        # Auto-register @tool decorated functions from steps and normalize to names
+        # Auto-register @tool decorated functions from agents and normalize to names
+        # Agent tools are what get registered with the SDK client
+        for agent in agents.values():
+            normalized_tools = []
+            for t in agent.tools:
+                if is_tool_function(t):
+                    tool_name = tool_registry.register_tool_function(t)
+                    normalized_tools.append(tool_name)
+                else:
+                    normalized_tools.append(t)
+            agent.tools = normalized_tools
+
+        # Also normalize step tools (these are soft constraints, not registered separately)
+        # Step tools reference tools already registered via agents
         for step in steps.values():
             normalized_tools = []
             for t in step.tools:
                 if is_tool_function(t):
+                    # Register if not already registered, get name
                     tool_name = tool_registry.register_tool_function(t)
                     normalized_tools.append(tool_name)
                 else:

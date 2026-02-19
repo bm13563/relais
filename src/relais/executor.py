@@ -172,12 +172,13 @@ class PipelineOrchestrator:
         if not agent:
             agent = PipelineAgent(
                 name=agent_template.name,
+                tools=agent_template.tools,  # Copy tools from template
                 steps=agent_template.steps,
                 max_turns=agent_template.max_turns,
                 model=agent_template.model,
                 thinking=agent_template.thinking,
             )
-            self.log.info(f"Created agent '{agent_name}' from template: steps={agent.steps}, max_turns={agent.max_turns}")
+            self.log.info(f"Created agent '{agent_name}' from template: steps={agent.steps}, max_turns={agent.max_turns}, tools={len(agent.tools)}")
 
             # Save new agent
             self.agent_state_manager.save_agent(run_id, agent)
@@ -361,7 +362,7 @@ class PipelineOrchestrator:
                 else:
                     prev_msgs = None
                     
-                context = self._build_step_context(
+                context = await self._build_step_context(
                     step=step,
                     previous_result=previous_result,
                     initial_input=initial_input,
@@ -459,34 +460,17 @@ class PipelineOrchestrator:
         - Manages agent lifecycle (consume_step, expiration) for non-persistent agents
         - Persists agent state to database
         """
-        # Set current step for tool validation
+        # Set current step for tool validation (soft constraint - MCP blocks unauthorized tools)
         self.tool_registry.set_current_step(step.name, step.tools or [])
 
         # Build client options from agent settings
         model = agent.model or "opus"
         thinking = agent.thinking or False
-        allowed_tools = self.tool_registry.get_allowed_tools(step.tools)
+        # Use agent's tools for SDK client (not step's tools - those are soft constraints)
+        allowed_tools = self.tool_registry.get_allowed_tools(agent.tools)
 
-        # Check if agent already has a client with matching allowed_tools
-        # SDK doesn't support updating allowed_tools, so we must recreate client if tools change
+        # Check if agent already has a client - reuse it across steps
         reusing_client = agent.has_client()
-        inject_history = False
-        if reusing_client:
-            # Check if allowed_tools match what the client was created with
-            client_tools = getattr(agent, '_client_allowed_tools', None)
-            if client_tools != set(allowed_tools):
-                self.log.info(f"Agent '{agent.name}' tools changed ({client_tools} -> {set(allowed_tools)}), recreating client")
-                await agent.disconnect()
-                reusing_client = False
-                # When recreating client, we need to inject conversation history
-                inject_history = bool(agent.conversation_history)
-
-        # If we need to inject history, prepend it to the context
-        if inject_history:
-            history_text = self._format_conversation_history(agent.conversation_history)
-            if history_text:
-                context = f"[Previous Conversation]\n{history_text}\n\n{context}"
-                self.log.debug(f"Injected {len(agent.conversation_history)} messages into context for recreated client")
 
         agent_instance_id = None
 
@@ -522,6 +506,7 @@ class PipelineOrchestrator:
         tool_results = []
         final_response = ""
         turns_used = 0
+        is_error = False
         captured_messages = []
 
         # Record the user query
@@ -535,7 +520,6 @@ class PipelineOrchestrator:
             client = ClaudeSDKClient(options=options)
             await client.connect()
             agent.set_client(client)
-            agent._client_allowed_tools = set(allowed_tools)  # Track tools for client reuse check
             await client.query(context)
 
         try:
@@ -565,7 +549,8 @@ class PipelineOrchestrator:
 
                 elif isinstance(message, ResultMessage):
                     turns_used = message.num_turns  # For logging
-                    self.log.info(f"Result: turns={turns_used}, error={message.is_error}")
+                    is_error = message.is_error
+                    self.log.info(f"Result: turns={turns_used}, error={is_error}")
                     if config.verbose and message.usage:
                         u = message.usage
                         input_tokens = u.get('input_tokens', 0) + u.get('cache_creation_input_tokens', 0) + u.get('cache_read_input_tokens', 0)
@@ -601,7 +586,7 @@ class PipelineOrchestrator:
             final_response=final_response,
             tool_results=tool_results,
             turns_used=turns_used,
-            stop_reason='success',
+            stop_reason='error' if is_error else 'success',
             routing_data=routing_data,
             messages=captured_messages
         )
@@ -620,7 +605,7 @@ class PipelineOrchestrator:
 
         return result
 
-    def _build_step_context(
+    async def _build_step_context(
         self,
         step: PipelineStep,
         previous_result: dict,
@@ -647,7 +632,7 @@ class PipelineOrchestrator:
         sections.append(f"[Current Step]\n{step.name}")
 
         # Execute hooks
-        hook_data = step.get_hook_data()
+        hook_data = await step.get_hook_data()
         if hook_data:
             self.log.debug(f"Hook data: {len(hook_data)} items")
             sections.append(f"[Hook Data]\n{json.dumps(hook_data, indent=2)}")
@@ -659,6 +644,22 @@ class PipelineOrchestrator:
             sections.append(f"[Instructions]\n{instruction}")
         else:
             self.log.warning(f"Instruction not found: {instruction_path}")
+
+        # Add available tools section (soft constraint - tells agent what tools to use)
+        if step.tools:
+            tool_names = []
+            for t in step.tools:
+                if callable(t) and hasattr(t, '_tool_name'):
+                    tool_names.append(t._tool_name)
+                elif isinstance(t, str):
+                    tool_names.append(t)
+            if tool_names:
+                tools_text = ", ".join(tool_names)
+                sections.append(
+                    f"[Available Tools]\n"
+                    f"For this step, you should use: {tools_text}\n"
+                    f"Other tools are not available for this step and will be blocked if called."
+                )
 
         # Always end with pipeline step instruction
         sections.append(PIPELINE_STEP_INSTRUCTION)
