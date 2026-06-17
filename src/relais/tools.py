@@ -185,19 +185,20 @@ def _extract_schema_from_signature(func: Callable) -> dict:
 
 
 def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_name: str = None) -> Callable:
-    """Create a wrapper that converts dict args to keyword arguments.
+    """Wrap a tool function so the SDK can call it with a single args dict.
 
-    The SDK expects tools to have signature: async def tool(args: dict) -> dict
-    But we want users to define tools with proper parameters.
-    This wrapper bridges the gap and validates tool access.
+    The SDK invokes tools as ``async def tool(args: dict) -> dict``. Tools in
+    Relais are defined with explicit, typed parameters; this wrapper unpacks the
+    args dict into keyword arguments, enforces per-step tool access, and captures
+    the result for routing.
 
     Args:
-        func: The function with proper parameter signature
-        registry: Optional ToolRegistry for step validation
-        tool_name: Optional tool name for validation
+        func: The tool function (defined with typed parameters)
+        registry: ToolRegistry for per-step access checks and result capture
+        tool_name: Tool name used for access checks and capture
 
     Returns:
-        A wrapper function with (args: dict) -> dict signature
+        A wrapper with the SDK's ``(args: dict) -> dict`` signature
     """
     import functools
 
@@ -206,13 +207,6 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
         name for name, param in sig.parameters.items()
         if param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)
     ]
-
-    # Check if function already uses old-style args: dict signature
-    is_old_style = len(param_names) == 1 and param_names[0] == "args"
-
-    # If old-style and no validation needed, return unwrapped
-    if is_old_style and not (registry and tool_name):
-        return func
 
     @functools.wraps(func)
     async def wrapper(args: dict) -> dict:
@@ -232,13 +226,9 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
                 }
 
         try:
-            # For old-style functions, just pass args through
-            if is_old_style:
-                result = await func(args)
-            else:
-                # Extract values from args dict and pass as keyword arguments
-                kwargs = {name: args.get(name) for name in param_names if name in args}
-                result = await func(**kwargs)
+            # Unpack the args dict into the tool's keyword parameters
+            kwargs = {name: args.get(name) for name in param_names if name in args}
+            result = await func(**kwargs)
 
             # Capture result for routing
             if registry:

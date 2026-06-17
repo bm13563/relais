@@ -51,10 +51,10 @@ class Pipeline:
             db_config="./pipeline.db"
         )
 
-        # Register tools (must be async, take args dict)
-        @pipeline.tool("my_tool", "Does something useful", {"arg": str})
-        async def my_tool(args: dict) -> dict:
-            return {"content": [{"type": "text", "text": args["arg"]}]}
+        # Register tools (async, with typed parameters)
+        @pipeline.tool("my_tool", "Does something useful")
+        async def my_tool(arg: Annotated[str, "An input value"]) -> dict:
+            return {"content": [{"type": "text", "text": arg}]}
 
         # Run
         run_id = pipeline.run("User input here", args={"key": "value"})

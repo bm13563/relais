@@ -63,7 +63,7 @@ class TestToolRegistration:
         registry = ToolRegistry("test")
 
         @registry.tool("simple", "A simple tool")
-        async def simple(args: dict) -> dict:
+        async def simple() -> dict:
             return {"content": [{"type": "text", "text": "done"}]}
 
         tool_def = registry.get("simple")
@@ -77,15 +77,15 @@ class TestToolRegistration:
         registry = ToolRegistry("multi")
 
         @registry.tool("tool1", "First tool")
-        async def tool1(args: dict) -> dict:
+        async def tool1() -> dict:
             return {"content": [{"type": "text", "text": "1"}]}
 
         @registry.tool("tool2", "Second tool")
-        async def tool2(args: dict) -> dict:
+        async def tool2() -> dict:
             return {"content": [{"type": "text", "text": "2"}]}
 
         @registry.tool("tool3", "Third tool")
-        async def tool3(args: dict) -> dict:
+        async def tool3() -> dict:
             return {"content": [{"type": "text", "text": "3"}]}
 
         assert set(registry.list_tools()) == {"tool1", "tool2", "tool3"}
@@ -128,7 +128,7 @@ class TestToolRetrieval:
         registry = ToolRegistry("test")
 
         @registry.tool("exists", "Exists")
-        async def exists(args: dict) -> dict:
+        async def exists() -> dict:
             return {"content": [{"type": "text", "text": "here"}]}
 
         tool = registry.get("exists")
@@ -149,11 +149,11 @@ class TestToolRetrieval:
         registry = ToolRegistry("test")
 
         @registry.tool("alpha", "Alpha")
-        async def alpha(args: dict) -> dict:
+        async def alpha() -> dict:
             return {"content": []}
 
         @registry.tool("beta", "Beta")
-        async def beta(args: dict) -> dict:
+        async def beta() -> dict:
             return {"content": []}
 
         tools = registry.list_tools()
@@ -173,11 +173,11 @@ class TestGetAllowedTools:
         registry = ToolRegistry("my_server")
 
         @registry.tool("tool_a", "Tool A")
-        async def tool_a(args: dict) -> dict:
+        async def tool_a() -> dict:
             return {"content": []}
 
         @registry.tool("tool_b", "Tool B")
-        async def tool_b(args: dict) -> dict:
+        async def tool_b() -> dict:
             return {"content": []}
 
         allowed = registry.get_allowed_tools(["tool_a", "tool_b"])
@@ -191,15 +191,15 @@ class TestGetAllowedTools:
         registry = ToolRegistry("server")
 
         @registry.tool("a", "A")
-        async def a(args: dict) -> dict:
+        async def a() -> dict:
             return {"content": []}
 
         @registry.tool("b", "B")
-        async def b(args: dict) -> dict:
+        async def b() -> dict:
             return {"content": []}
 
         @registry.tool("c", "C")
-        async def c(args: dict) -> dict:
+        async def c() -> dict:
             return {"content": []}
 
         # Only request a subset
@@ -222,7 +222,7 @@ class TestGetAllowedTools:
         registry = ToolRegistry("tools")
 
         @registry.tool("custom", "Custom tool")
-        async def custom(args: dict) -> dict:
+        async def custom() -> dict:
             return {"content": []}
 
         allowed = registry.get_allowed_tools(["custom", "Read", "Bash"])
@@ -254,20 +254,20 @@ class TestGetAllowedTools:
 
         # Register tools via registry
         @registry.tool("tool_a", "Tool A")
-        async def tool_a(args: dict) -> dict:
+        async def tool_a() -> dict:
             return {"content": []}
 
         @registry.tool("tool_b", "Tool B")
-        async def tool_b(args: dict) -> dict:
+        async def tool_b() -> dict:
             return {"content": []}
 
         # Create standalone @tool decorated functions (simulating what users do)
         @tool("tool_a", "Tool A")
-        async def standalone_a(args: dict) -> dict:
+        async def standalone_a() -> dict:
             return {"content": []}
 
         @tool("tool_b", "Tool B")
-        async def standalone_b(args: dict) -> dict:
+        async def standalone_b() -> dict:
             return {"content": []}
 
         # Pass function references instead of string names
@@ -284,12 +284,12 @@ class TestGetAllowedTools:
         registry = ToolRegistry("tools")
 
         @registry.tool("custom", "Custom tool")
-        async def custom(args: dict) -> dict:
+        async def custom() -> dict:
             return {"content": []}
 
         # Create standalone @tool decorated function
         @tool("custom", "Custom tool")
-        async def custom_func(args: dict) -> dict:
+        async def custom_func() -> dict:
             return {"content": []}
 
         # Mix function reference with built-in string names
@@ -313,7 +313,7 @@ class TestCreateMcpServer:
         registry = ToolRegistry("my_tools")
 
         @registry.tool("test", "Test tool")
-        async def test(args: dict) -> dict:
+        async def test() -> dict:
             return {"content": []}
 
         server = registry.create_mcp_server()
@@ -334,7 +334,7 @@ class TestCreateMcpServer:
         registry = ToolRegistry("versioned")
 
         @registry.tool("t", "T")
-        async def t(args: dict) -> dict:
+        async def t() -> dict:
             return {"content": []}
 
         registry.create_mcp_server(version="2.5.0")
@@ -391,7 +391,7 @@ class TestToolExecution:
         registry = ToolRegistry("test")
 
         @registry.tool("format_test", "Test format")
-        async def format_test(args: dict) -> dict:
+        async def format_test() -> dict:
             return {
                 "content": [
                     {"type": "text", "text": "result"}
@@ -406,21 +406,25 @@ class TestToolExecution:
         assert result["content"][0]["type"] == "text"
 
     @patch('relais.tools.sdk_tool')
-    def test_tool_receives_args(self, mock_sdk_tool):
-        """Test that tool receives args correctly."""
+    def test_tool_receives_args_as_kwargs(self, mock_sdk_tool):
+        """Test that the args dict is unpacked into the tool's typed parameters."""
         mock_sdk_tool.return_value = lambda f: f
 
         registry = ToolRegistry("test")
-        received_args = {}
+        received = {}
 
         @registry.tool("capture", "Capture args")
-        async def capture(args: dict) -> dict:
-            received_args.update(args)
+        async def capture(
+            key: Annotated[str, "a string"],
+            num: Annotated[int, "a number"],
+        ) -> dict:
+            received["key"] = key
+            received["num"] = num
             return {"content": [{"type": "text", "text": "ok"}]}
 
         asyncio.run(capture({"key": "value", "num": 42}))
 
-        assert received_args == {"key": "value", "num": 42}
+        assert received == {"key": "value", "num": 42}
 
 
 class TestStepValidation:
@@ -434,11 +438,11 @@ class TestStepValidation:
         registry = ToolRegistry("test")
 
         @registry.tool("tool_a", "Tool A")
-        async def tool_a(args: dict) -> dict:
+        async def tool_a() -> dict:
             return {"content": []}
 
         @registry.tool("tool_b", "Tool B")
-        async def tool_b(args: dict) -> dict:
+        async def tool_b() -> dict:
             return {"content": []}
 
         registry.set_current_step("step1", ["tool_a"])
@@ -456,12 +460,12 @@ class TestStepValidation:
         registry = ToolRegistry("test")
 
         @registry.tool("tool_a", "Tool A")
-        async def tool_a(args: dict) -> dict:
+        async def tool_a() -> dict:
             return {"content": []}
 
         # Create standalone @tool decorated function
         @tool("tool_a", "Tool A")
-        async def standalone_a(args: dict) -> dict:
+        async def standalone_a() -> dict:
             return {"content": []}
 
         registry.set_current_step("step1", [standalone_a])
@@ -477,11 +481,11 @@ class TestStepValidation:
         registry = ToolRegistry("test")
 
         @registry.tool("allowed", "Allowed")
-        async def allowed(args: dict) -> dict:
+        async def allowed() -> dict:
             return {"content": []}
 
         @registry.tool("not_allowed", "Not allowed")
-        async def not_allowed(args: dict) -> dict:
+        async def not_allowed() -> dict:
             return {"content": []}
 
         registry.set_current_step("step1", ["allowed"])
@@ -554,15 +558,15 @@ class TestStepValidation:
         registry = ToolRegistry("test")
 
         @registry.tool("tool_a", "Tool A")
-        async def tool_a(args: dict) -> dict:
+        async def tool_a() -> dict:
             return {"content": [{"type": "text", "text": "A"}]}
 
         @registry.tool("tool_b", "Tool B")
-        async def tool_b(args: dict) -> dict:
+        async def tool_b() -> dict:
             return {"content": [{"type": "text", "text": "B"}]}
 
         @registry.tool("tool_c", "Tool C")
-        async def tool_c(args: dict) -> dict:
+        async def tool_c() -> dict:
             return {"content": [{"type": "text", "text": "C"}]}
 
         # Allow only tool_a and tool_b
@@ -588,7 +592,7 @@ class TestStepValidation:
         registry = ToolRegistry("test")
 
         @registry.tool("any_tool", "Any tool")
-        async def any_tool(args: dict) -> dict:
+        async def any_tool() -> dict:
             return {"content": [{"type": "text", "text": "result"}]}
 
         # Set step with no allowed tools

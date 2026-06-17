@@ -1,15 +1,10 @@
 """Hook to inject user preferences into pipeline context."""
 
 
-def get_user_preferences(args: dict) -> str:
-    """Return user preferences based on user_id.
+def get_user_preferences() -> str:
+    """Return user preferences.
 
-    Args:
-        args: Pipeline arguments, may contain 'user_id'
-
-    Returns:
-        User preferences string
+    Hooks are called with no arguments. In a real application this would fetch
+    per-user settings from a database; here it returns static defaults.
     """
-    user_id = args.get("user_id", "anonymous")
-    # In a real application, this would fetch from a database
-    return f"User preferences for {user_id}: language=en, theme=dark, notifications=enabled"
+    return "User preferences: language=en, theme=dark, notifications=enabled"

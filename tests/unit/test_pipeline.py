@@ -118,7 +118,7 @@ class TestPipelineTool:
         pipeline.tool_registry.tool = MagicMock(return_value=mock_tool_decorator)
 
         @pipeline.tool("my_tool", "My description")
-        async def my_tool(args: dict) -> dict:
+        async def my_tool() -> dict:
             return {"content": []}
 
         pipeline.tool_registry.tool.assert_called_once_with(
