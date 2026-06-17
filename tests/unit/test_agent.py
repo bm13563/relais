@@ -219,34 +219,6 @@ class TestClientManagement:
         await agent.disconnect()
 
 
-class TestAgentConfiguration:
-    """Tests for agent configuration resolution."""
-
-    def test_get_model_returns_agent_model_if_set(self):
-        """Test that get_model returns agent's model when set."""
-        agent = PipelineAgent(name="agent", model="opus")
-
-        assert agent.get_model(default="sonnet") == "opus"
-
-    def test_get_model_returns_default_when_not_set(self):
-        """Test that get_model returns default when agent model is None."""
-        agent = PipelineAgent(name="agent", model=None)
-
-        assert agent.get_model(default="sonnet") == "sonnet"
-
-    def test_get_thinking_returns_agent_value_if_set(self):
-        """Test that get_thinking returns agent's value when set."""
-        agent = PipelineAgent(name="agent", thinking=False)
-
-        assert agent.get_thinking(default=True) is False
-
-    def test_get_thinking_returns_default_when_not_set(self):
-        """Test that get_thinking returns default when agent value is None."""
-        agent = PipelineAgent(name="agent", thinking=None)
-
-        assert agent.get_thinking(default=True) is True
-
-
 class TestAgentEquality:
     """Tests for agent equality and identity."""
 

@@ -128,28 +128,6 @@ class PipelineAgent:
         if self.client is not None:
             await self.client.disconnect()
 
-    def get_model(self, default: str) -> str:
-        """Get the model for this agent, falling back to default.
-
-        Args:
-            default: Default model to use if agent model is None
-
-        Returns:
-            Agent's model or default
-        """
-        return self.model if self.model is not None else default
-
-    def get_thinking(self, default: bool) -> bool:
-        """Get the thinking setting for this agent, falling back to default.
-
-        Args:
-            default: Default thinking setting if agent setting is None
-
-        Returns:
-            Agent's thinking setting or default
-        """
-        return self.thinking if self.thinking is not None else default
-
     def __eq__(self, other: object) -> bool:
         """Check equality based on name and configuration.
 
