@@ -7,47 +7,58 @@ from pathlib import Path
 # Add examples directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from relais import Pipeline, PipelineStep  # noqa: E402
+from relais import Pipeline, PipelineStep, PipelineAgent  # noqa: E402
 
 from config import DB_PATH, INSTRUCTIONS_DIR  # noqa: E402
 from tools.search import search  # noqa: E402
 from tools.summary import create_summary  # noqa: E402
 
 
-def main():
-    print("=" * 60)
-    print("Research Pipeline (with Subagent)")
-    print("=" * 60)
-    print("\nThis pipeline uses an isolated subagent for research,")
-    print("then summarizes the findings in the main agent context.\n")
+def create_research_pipeline(args: dict = None) -> Pipeline:
+    """Build a research -> summarize pipeline using two isolated agents.
 
-    # Create pipeline
-    pipeline = Pipeline.create(
+    Two distinct agents => two distinct SDK clients => isolated contexts. The
+    researcher only ever has the search tool; the summarizer only ever has
+    create_summary. The summarizer sees the researcher's output through the
+    pipeline's [Previous Step Output] section, not a shared conversation.
+    """
+    researcher = PipelineAgent(name="researcher", tools=[search], max_turns=5)
+    summarizer = PipelineAgent(name="summarizer", tools=[create_summary], max_turns=3)
+
+    return Pipeline.create(
         name="research_pipeline",
         steps={
             "research": PipelineStep(
                 name="research",
                 instruction="research",
                 response_tool="search",
-                max_turns=5,
                 tools=[search],
-                subagent=True,
+                agent=researcher,
                 next={"default": "summarize"}
             ),
             "summarize": PipelineStep(
                 name="summarize",
                 instruction="summarize",
                 response_tool="create_summary",
-                max_turns=3,
                 tools=[create_summary],
+                agent=summarizer,
                 next={"default": None}
             )
         },
         start_step="research",
         instructions_dir=INSTRUCTIONS_DIR,
-        db_config=DB_PATH,
-        grounded=True
+        db_config=DB_PATH
     )
+
+
+def main():
+    print("=" * 60)
+    print("Research Pipeline (with isolated research agent)")
+    print("=" * 60)
+    print("\nThe research step runs on its own agent with its own client,")
+    print("isolated from the summarizer that follows it.\n")
+
+    pipeline = create_research_pipeline()
     pipeline.initialize_db()
 
     # Run

@@ -24,20 +24,21 @@ PipelineOrchestrator._execute_pipeline()
     │       ▼
     │   _execute_step(step, context, agent)
     │       │
+    │       ├── set_current_step(step.name, step.tools)  ← per-step tool gate
     │       ├── Create/reuse ClaudeSDKClient for agent
     │       ├── Send context via client.query(context)
     │       ├── Stream response, capture messages
     │       ├── Tool calls execute via MCP server
     │       │       │
-    │       │       └── Tool wrapper captures result to
-    │       │           ToolRegistry._last_tool_result
-    │       │
-    │       └── Return StepExecutionResult
+    │       │       ├── Wrapper refuses tools not in step.tools
+    │       │       └── Allowed results appended to registry._tool_results
     │       │
     │       ▼
-    │   _get_routing_data_from_registry()
+    │       Capture step.response_tool's output via
+    │       registry.get_tool_result(step.response_tool)
+    │       (raises ResponseToolNotCalled if it was never called)
     │       │
-    │       └── Retrieves tool result captured by MCP wrapper
+    │       └── Return StepExecutionResult(routing_data=...)
     │       │
     │       ▼
     │   step.resolve_next(routing_data)
@@ -52,22 +53,19 @@ PipelineOrchestrator._execute_pipeline()
 The **critical path** for context between steps:
 
 ```
-Step A tool call
+Step A: agent calls its response_tool
     │
     ▼
 Tool wrapper in tools.py (_create_args_wrapper)
     │
+    ├── is_tool_allowed(name)? refuse if not in the current step's tools
     ├── Executes the actual tool function
-    └── Saves result: registry._last_tool_result = (tool_name, result)
+    └── Appends (tool_name, result) to registry._tool_results
     │
     ▼
-_execute_step returns
+_execute_step: registry.get_tool_result(step.response_tool)
     │
-    ▼
-_get_routing_data_from_registry()
-    │
-    ├── Calls registry.get_last_tool_result()
-    └── Extracts JSON from MCP content format
+    └── _extract_from_mcp_content() → JSON dict (or {"response": text})
     │
     ▼
 routing_data = extracted dict

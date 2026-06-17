@@ -7,27 +7,29 @@ from pathlib import Path
 # Add examples directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from relais import Pipeline, PipelineStep  # noqa: E402
+from relais import Pipeline, PipelineStep, PipelineAgent  # noqa: E402
 
 from config import DB_PATH, INSTRUCTIONS_DIR  # noqa: E402
 from tools import send_greeting  # noqa: E402
 
 
-def main():
-    print("=" * 60)
-    print("Simple Greeting Pipeline")
-    print("=" * 60)
+def create_simple_greeting(args: dict = None) -> Pipeline:
+    """Build the simple greeting pipeline.
 
-    # Create pipeline
-    pipeline = Pipeline.create(
+    Every step is driven by an explicit agent. The agent owns max_turns and the
+    model, and is granted exactly the tools the step may use.
+    """
+    greeter = PipelineAgent(name="greeter", tools=[send_greeting], max_turns=3)
+
+    return Pipeline.create(
         name="simple_greeting",
         steps={
             "greet": PipelineStep(
                 name="greet",
                 instruction="greet",
                 response_tool="send_greeting",
-                max_turns=3,
                 tools=[send_greeting],
+                agent=greeter,
                 next={"default": None}
             )
         },
@@ -35,6 +37,14 @@ def main():
         instructions_dir=INSTRUCTIONS_DIR,
         db_config=DB_PATH
     )
+
+
+def main():
+    print("=" * 60)
+    print("Simple Greeting Pipeline")
+    print("=" * 60)
+
+    pipeline = create_simple_greeting()
     pipeline.initialize_db()
 
     # Run

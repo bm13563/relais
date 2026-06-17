@@ -7,11 +7,48 @@ from pathlib import Path
 # Add examples directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from relais import Pipeline, PipelineStep  # noqa: E402
+from relais import Pipeline, PipelineStep, PipelineAgent  # noqa: E402
 
 from config import DB_PATH, INSTRUCTIONS_DIR  # noqa: E402
 from hooks import get_current_time, get_user_preferences, get_system_status  # noqa: E402
 from tools import contextual_greeting, report_status  # noqa: E402
+
+
+def create_hooks_pipeline(args: dict = None) -> Pipeline:
+    """Build a pipeline whose steps receive dynamic context via hooks.
+
+    Hooks (time, preferences, system status) run before each step and their
+    output is injected into the step's context as [Hook Data].
+    """
+    greeter = PipelineAgent(name="greeter", tools=[contextual_greeting], max_turns=3)
+    reporter = PipelineAgent(name="reporter", tools=[report_status], max_turns=2)
+
+    return Pipeline.create(
+        name="hooks_example",
+        steps={
+            "process_with_context": PipelineStep(
+                name="process_with_context",
+                instruction="greet",
+                response_tool="contextual_greeting",
+                tools=[contextual_greeting],
+                hooks=[get_current_time, get_user_preferences],
+                agent=greeter,
+                next={"default": "status_report"}
+            ),
+            "status_report": PipelineStep(
+                name="status_report",
+                instruction="chat",
+                response_tool="report_status",
+                tools=[report_status],
+                hooks=[get_system_status, get_current_time],
+                agent=reporter,
+                next={"default": None}
+            )
+        },
+        start_step="process_with_context",
+        instructions_dir=INSTRUCTIONS_DIR,
+        db_config=DB_PATH
+    )
 
 
 def main():
@@ -21,33 +58,7 @@ def main():
     print("\nThis pipeline uses hooks to inject dynamic context")
     print("(time, preferences, system status) into each step.\n")
 
-    # Create pipeline
-    pipeline = Pipeline.create(
-        name="hooks_example",
-        steps={
-            "process_with_context": PipelineStep(
-                name="process_with_context",
-                instruction="greet",
-                response_tool="contextual_greeting",
-                max_turns=3,
-                tools=[contextual_greeting],
-                hooks=[get_current_time, get_user_preferences],
-                next={"default": "status_report"}
-            ),
-            "status_report": PipelineStep(
-                name="status_report",
-                instruction="chat",
-                response_tool="report_status",
-                max_turns=2,
-                tools=[report_status],
-                hooks=[get_system_status, get_current_time],
-                next={"default": None}
-            )
-        },
-        start_step="process_with_context",
-        instructions_dir=INSTRUCTIONS_DIR,
-        db_config=DB_PATH
-    )
+    pipeline = create_hooks_pipeline()
     pipeline.initialize_db()
 
     # Run

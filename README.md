@@ -6,14 +6,28 @@ A framework for building multi-step AI agent pipelines using the Claude Agent SD
 
 ## Overview
 
-Relais provides a high-level abstraction for orchestrating AI agent workflows. It enables you to:
+Relais is an AI state machine operated by config. You declare tools, instructions,
+agents, and routing; each step is driven by an agent that can use only the tools it
+was granted and does exactly one thing before handing off. It enables you to:
 
-- Define multi-step pipelines with custom tools at each step
-- Route between steps based on tool results (conditional branching)
-- Inject dynamic context via hooks
-- Run isolated subagents for research or specialized tasks
-- Ground agent responses to pipeline data (reduce hallucination from training data)
-- Persist pipeline state to SQLite
+- Define multi-step pipelines where each step is driven by an explicit agent
+- Grant each agent a fixed tool set that is **enforced**, not merely suggested — an
+  agent physically cannot call a tool it was not given
+- Route between steps based on a step's structured output (conditional branching)
+- Inject dynamic context via hooks (sync or async)
+- Isolate steps onto separate agents (separate clients, separate context) or share
+  one persistent agent across steps
+- Persist pipeline and agent state to SQLite, including step-through debugging
+
+### Core model
+
+- **Agent** — owns a model, a `max_turns` budget, and a tool set. May persist across
+  steps or be scoped to a number of steps. Two different agents have two different
+  SDK clients and therefore isolated conversation context.
+- **Step** — names an instruction file, the tools available *for that step*, the
+  `response_tool` whose output is captured, the agent that runs it, and routing rules.
+- **response_tool** — every step must declare one. Only that tool's output is captured,
+  used for routing, and passed to the next step. Text responses are not propagated.
 
 ## Installation
 
@@ -31,12 +45,17 @@ uv pip install -e ".[dev]"
 ## Quick Start
 
 ```python
-from relais import Pipeline, PipelineStep, tool, Annotated
+from pathlib import Path
+from relais import Pipeline, PipelineStep, PipelineAgent, tool, Annotated
 
-# Define a tool
+# Define a tool. Its return value becomes the step's structured output.
 @tool("greet", "Greet the user")
 async def greet(name: Annotated[str, "The name of the person to greet"]) -> dict:
     return {"content": [{"type": "text", "text": f"Hello, {name}!"}]}
+
+# Define the agent that runs the step. It owns max_turns / model and is granted
+# exactly the tools it may use.
+greeter = PipelineAgent(name="greeter", tools=[greet], max_turns=3)
 
 # Create a pipeline
 pipeline = Pipeline.create(
@@ -44,10 +63,11 @@ pipeline = Pipeline.create(
     steps={
         "greet": PipelineStep(
             name="greet",
-            instruction="greet",  # loads instructions/greet.md
-            max_turns=3,
-            tools=[greet],
-            next={"default": None}  # ends pipeline
+            instruction="greet",       # loads instructions/greet.md
+            response_tool="greet",     # this tool's output is captured + routed
+            tools=[greet],             # tools available for this step
+            agent=greeter,             # required: the agent that runs the step
+            next={"default": None}     # ends pipeline
         )
     },
     start_step="greet",
@@ -68,13 +88,17 @@ print(state.step_results)
 
 Route to different steps based on tool results:
 
+Routing reads a field from the step's `response_tool` output:
+
 ```python
 PipelineStep(
     name="analyze",
     instruction="analyze",
+    response_tool="classify_request",
     tools=[classify_request],
+    agent=PipelineAgent(name="classifier", tools=[classify_request], max_turns=2),
     next={
-        "field": "category",
+        "field": "category",  # read from classify_request's output
         "routes": [
             {"equals": "question", "goto": "answer_question"},
             {"equals": "task", "goto": "perform_task"},
@@ -88,36 +112,52 @@ PipelineStep(
 
 Inject runtime data into step context:
 
+Hooks run before the step and their output is injected as `[Hook Data]`. They may
+be sync or async:
+
 ```python
 def get_current_time():
     return {"timestamp": datetime.now().isoformat()}
 
-def get_user_preferences():
+async def get_user_preferences():
     return {"theme": "dark", "language": "en"}
 
 PipelineStep(
     name="personalized_response",
     instruction="respond",
+    response_tool="respond_tool",
     tools=[respond_tool],
     hooks=[get_current_time, get_user_preferences],
+    agent=PipelineAgent(name="responder", tools=[respond_tool]),
     next={"default": None}
 )
 ```
 
-### Subagents
+### Isolated vs. shared agents
 
-Run isolated agents that don't share conversation context:
+Give two steps **different** agents and they get separate SDK clients and isolated
+conversation context — the later step sees the earlier one only through
+`[Previous Step Output]`:
 
 ```python
-PipelineStep(
-    name="research",
-    instruction="research",
-    tools=[search],
-    subagent=True,  # isolated session
-    subagent_model="opus",  # optional: use different model
-    next={"default": "summarize"}
-)
+researcher = PipelineAgent(name="researcher", tools=[search], max_turns=5)
+summarizer = PipelineAgent(name="summarizer", tools=[create_summary], max_turns=3)
+
+steps = {
+    "research": PipelineStep(
+        name="research", instruction="research", response_tool="search",
+        tools=[search], agent=researcher, next={"default": "summarize"},
+    ),
+    "summarize": PipelineStep(
+        name="summarize", instruction="summarize", response_tool="create_summary",
+        tools=[create_summary], agent=summarizer, next={"default": None},
+    ),
+}
 ```
+
+Give two steps the **same** agent instance and the agent persists across them,
+keeping its conversation history live in the SDK client. Use `steps=N` on an agent
+to expire it after N steps.
 
 ### Session Mode (Step-Through Debugging)
 
@@ -146,31 +186,24 @@ pipeline.run("Analyze the data", session="debug1")
 - When pipeline finishes all steps, session is marked `completed`
 - Running with the same session name after completion starts a new run from the beginning
 
-**CLI usage:**
-```bash
-# Step through with session "a"
-uv run python my_pipeline.py --session=a
-uv run python my_pipeline.py -s a  # continue
-uv run python my_pipeline.py -s a  # continue again
-```
+### Tool Gating (defined, not recommended)
 
-### Grounded Mode
-
-Constrain agent to only use pipeline data (reduces training data hallucination):
+The tools listed on a step are the *only* tools that step's agent can successfully
+call. This is enforced at runtime: every tool invocation is checked against the
+current step's allow-list, and a call to any other tool is refused before the tool
+body runs and is excluded from routing data. Telling the model about a tool in an
+instruction does not grant access — only the step's `tools` list does.
 
 ```python
-pipeline = Pipeline.create(
-    name="grounded_pipeline",
-    grounded=True,  # applies to all steps
-    # ...
-)
-
-# Or per-subagent:
+# secret_tool is registered on the pipeline but NOT in this step's tools list.
+# Even if the instruction tells the model to call it, the body never executes.
 PipelineStep(
-    name="research",
-    subagent=True,
-    subagent_grounded=True,  # only for this subagent
-    # ...
+    name="gated",
+    instruction="gated",
+    response_tool="allowed_tool",
+    tools=[allowed_tool],            # the only callable tool here
+    agent=PipelineAgent(name="gated_agent", tools=[allowed_tool]),
+    next={"default": None},
 )
 ```
 
@@ -207,7 +240,7 @@ Authentication is handled via Claude Code CLI (run `claude` to authenticate).
 # Simple greeting pipeline
 uv run examples/pipelines/simple_greeting.py
 
-# Research pipeline with subagent
+# Research pipeline with an isolated research agent
 uv run examples/pipelines/research.py
 
 # Routing pipeline with conditional branching
@@ -231,7 +264,7 @@ uv run pytest tests/unit/
 # Run only integration tests (requires SQLite)
 uv run pytest tests/integration/
 
-# Run only e2e tests (requires Claude Code CLI auth)
+# Run only e2e tests (real model calls; auto-skip without credentials)
 uv run pytest tests/e2e/
 
 # Run tests by marker
@@ -257,10 +290,13 @@ relais/
 │   ├── __init__.py      # Public API exports
 │   ├── pipeline.py      # High-level Pipeline class
 │   ├── step.py          # PipelineStep definition
+│   ├── agent.py         # PipelineAgent definition + lifecycle
 │   ├── executor.py      # Pipeline execution engine
-│   ├── tools.py         # Tool registry and @tool decorator
-│   ├── state.py         # SQLite state persistence
+│   ├── tools.py         # Tool registry, @tool decorator, per-step gating
+│   ├── state.py         # SQLite pipeline-run persistence
+│   ├── agent_state.py   # SQLite agent-state persistence
 │   ├── router.py        # Command routing
+│   ├── logging_config.py # Logging setup
 │   └── utils.py         # Utilities
 ├── examples/
 │   ├── pipelines/       # Example pipeline scripts
@@ -281,14 +317,13 @@ relais/
 
 ```python
 Pipeline.create(
-    name: str,                    # Unique pipeline identifier
-    steps: Dict[str, PipelineStep],  # Step definitions
-    start_step: str,              # First step to execute
-    instructions_dir: Path,       # Path to instruction markdown files
-    db_config: str,               # SQLite database path
-    model: str = "sonnet",        # Model for all steps (sonnet, opus, haiku)
-    grounded: bool = False,       # Constrain to pipeline data only
-    cwd: str = None               # Working directory for file operations
+    name: str,                       # Unique pipeline identifier
+    steps: Dict[str, PipelineStep],  # Step definitions (each must carry an agent)
+    start_step: str,                 # First step to execute
+    instructions_dir: Path,          # Path to instruction markdown files
+    db_config: str,                  # SQLite database path
+    cwd: str = None,                 # Working directory for file operations
+    verbose: bool = False,           # Print step output + token usage to console
 )
 
 pipeline.run(initial_input: str, args: dict = None, session: str = None) -> str  # Returns run_id
@@ -297,20 +332,32 @@ pipeline.resume(run_id: str, user_input: str = None)
 pipeline.initialize_db()
 ```
 
+Model and turn budget are configured on the agent, not on `Pipeline.create`.
+
 ### PipelineStep
 
 ```python
 PipelineStep(
-    name: str,                    # Step identifier
-    instruction: str,             # Instruction file name (without .md)
-    next: dict,                   # Routing rules
-    max_turns: int = 10,          # Max API round-trips
-    tools: List[Union[str, Callable]],  # Available tools
-    hooks: List[Callable] = [],   # Context injection functions
-    temperature: float = None,    # Temperature override
-    subagent: bool = False,       # Run as isolated subagent
-    subagent_model: str = None,   # Model override for subagent
-    subagent_grounded: bool = None  # Grounding override for subagent
+    name: str,                          # Step identifier
+    instruction: str,                   # Instruction file name (without .md)
+    response_tool: str,                 # Required: tool whose output is captured + routed
+    tools: List[Union[str, Callable]] = [],  # Tools available for this step (enforced)
+    hooks: List[Callable] = [],         # Context injection functions (sync or async)
+    agent: PipelineAgent = None,        # Required at pipeline-create time
+    next: dict = {"default": None},     # Routing rules
+)
+```
+
+### PipelineAgent
+
+```python
+PipelineAgent(
+    name: str,                          # Unique agent identifier
+    tools: List[Union[str, Callable]] = [],  # Tools this agent may use
+    steps: int = None,                  # None = persists across all steps; N = expires after N
+    max_turns: int = 2,                 # Max API round-trips per step
+    model: str = "opus",                # Model (opus, sonnet, haiku)
+    thinking: bool = False,             # Enable extended thinking
 )
 ```
 

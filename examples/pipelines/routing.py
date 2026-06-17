@@ -7,27 +7,32 @@ from pathlib import Path
 # Add examples directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from relais import Pipeline, PipelineStep  # noqa: E402
+from relais import Pipeline, PipelineStep, PipelineAgent  # noqa: E402
 
 from config import DB_PATH, INSTRUCTIONS_DIR  # noqa: E402
 from tools import classify_request, answer, execute_task, chat_response  # noqa: E402
 
 
-def main():
-    print("=" * 60)
-    print("Routing Pipeline")
-    print("=" * 60)
+def create_routing_pipeline(args: dict = None) -> Pipeline:
+    """Build the conditional-routing pipeline.
 
-    # Create pipeline
-    pipeline = Pipeline.create(
+    One agent per step, each granted only the single tool it needs. The
+    classifier's output drives conditional routing to one of three branches.
+    """
+    classifier = PipelineAgent(name="classifier", tools=[classify_request], max_turns=2)
+    answerer = PipelineAgent(name="answerer", tools=[answer], max_turns=3)
+    doer = PipelineAgent(name="doer", tools=[execute_task], max_turns=5)
+    chatter = PipelineAgent(name="chatter", tools=[chat_response], max_turns=2)
+
+    return Pipeline.create(
         name="routing_example",
         steps={
             "analyze": PipelineStep(
                 name="analyze",
                 instruction="analyze",
                 response_tool="classify_request",
-                max_turns=2,
                 tools=[classify_request],
+                agent=classifier,
                 next={
                     "field": "category",
                     "routes": [
@@ -42,24 +47,24 @@ def main():
                 name="answer_question",
                 instruction="answer_question",
                 response_tool="answer",
-                max_turns=3,
                 tools=[answer],
+                agent=answerer,
                 next={"default": None}
             ),
             "perform_task": PipelineStep(
                 name="perform_task",
                 instruction="perform_task",
                 response_tool="execute_task",
-                max_turns=5,
                 tools=[execute_task],
+                agent=doer,
                 next={"default": None}
             ),
             "chat": PipelineStep(
                 name="chat",
                 instruction="chat",
                 response_tool="chat_response",
-                max_turns=2,
                 tools=[chat_response],
+                agent=chatter,
                 next={"default": None}
             )
         },
@@ -67,6 +72,14 @@ def main():
         instructions_dir=INSTRUCTIONS_DIR,
         db_config=DB_PATH
     )
+
+
+def main():
+    print("=" * 60)
+    print("Routing Pipeline")
+    print("=" * 60)
+
+    pipeline = create_routing_pipeline()
     pipeline.initialize_db()
 
     # Test cases
