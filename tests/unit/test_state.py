@@ -196,21 +196,6 @@ class TestUpdatePipelineStep:
         assert "step2" in state.step_results
 
 
-class TestUpdateArgs:
-    """Tests for update_args method."""
-
-    def test_update_args_merges(self, state_manager):
-        """Test that args are merged, not replaced."""
-        run_id = state_manager.create_pipeline_run(
-            "pipeline", "step", args={"a": 1, "b": 2}
-        )
-
-        state_manager.update_args(run_id, {"b": 20, "c": 3})
-
-        state = state_manager.get_pipeline_run(run_id)
-        assert state.args == {"a": 1, "b": 20, "c": 3}
-
-
 class TestCompletePipeline:
     """Tests for complete_pipeline method."""
 

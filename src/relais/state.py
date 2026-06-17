@@ -295,31 +295,6 @@ class SQLiteStateManager:
         finally:
             conn.close()
 
-    def update_args(self, run_id: str, args: dict) -> None:
-        """Update pipeline arguments.
-
-        Args:
-            run_id: UUID of the run
-            args: New arguments to merge
-        """
-        conn = self._get_connection()
-        try:
-            cursor = conn.execute(
-                "SELECT args FROM pipeline_runs WHERE id = ?",
-                (run_id,)
-            )
-            row = cursor.fetchone()
-            current_args = json.loads(row['args']) if row and row['args'] else {}
-            current_args.update(args)
-
-            conn.execute(
-                "UPDATE pipeline_runs SET args = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (json.dumps(current_args), run_id)
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
     def complete_pipeline(self, run_id: str, status: str = 'completed') -> None:
         """Mark a pipeline as completed.
 

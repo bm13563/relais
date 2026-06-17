@@ -1,8 +1,6 @@
-"""Utility functions for Claude Code MCP pipelines."""
+"""Utility functions for Relais pipelines."""
 
-import re
 from pathlib import Path
-from typing import Optional
 
 
 def read_markdown(file_path: str, base_dir: Path = None) -> str:
@@ -19,27 +17,3 @@ def read_markdown(file_path: str, base_dir: Path = None) -> str:
 
     with open(full_path, 'r', encoding='utf-8') as file:
         return file.read()
-
-
-def parse_command(prompt: str, prefix: str = "#") -> Optional[dict]:
-    """Parse a command from user prompt.
-
-    Args:
-        prompt: The user's input prompt
-        prefix: The command prefix (default: "#")
-
-    Returns:
-        {'command': str, 'args': str|None} or None if no command found
-
-    Example:
-        parse_command("#learn ordering coffee")
-        -> {'command': 'learn', 'args': 'ordering coffee'}
-    """
-    pattern = rf'{re.escape(prefix)}(\w+)(?:\s+(.+))?$'
-    match = re.search(pattern, prompt.strip())
-    if not match:
-        return None
-    return {
-        'command': match.group(1),
-        'args': match.group(2)
-    }

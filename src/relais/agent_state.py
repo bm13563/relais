@@ -151,42 +151,6 @@ class AgentStateManager:
         finally:
             conn.close()
 
-    def load_all_agents(self, run_id: str) -> Dict[str, PipelineAgent]:
-        """Load all agents for a pipeline run.
-
-        Args:
-            run_id: UUID of the pipeline run
-
-        Returns:
-            Dictionary mapping agent names to PipelineAgent instances
-        """
-        conn = self._get_connection()
-        try:
-            cursor = conn.execute("""
-                SELECT * FROM pipeline_agents
-                WHERE run_id = ?
-            """, (run_id,))
-            rows = cursor.fetchall()
-
-            agents = {}
-            for row in rows:
-                thinking = None if row['thinking'] is None else bool(row['thinking'])
-
-                agent = PipelineAgent(
-                    name=row['name'],
-                    steps=row['steps'],
-                    model=row['model'],
-                    thinking=thinking,
-                )
-                agent.steps_remaining = row['steps_remaining']
-                agent.conversation_history = json.loads(row['conversation_history']) if row['conversation_history'] else []
-
-                agents[agent.name] = agent
-
-            return agents
-        finally:
-            conn.close()
-
     def delete_agent(self, run_id: str, agent_name: str) -> None:
         """Delete an agent's state.
 
@@ -204,66 +168,3 @@ class AgentStateManager:
         finally:
             conn.close()
 
-    def delete_all_agents_for_run(self, run_id: str) -> None:
-        """Delete all agents for a pipeline run.
-
-        Args:
-            run_id: UUID of the pipeline run
-        """
-        conn = self._get_connection()
-        try:
-            conn.execute("""
-                DELETE FROM pipeline_agents
-                WHERE run_id = ?
-            """, (run_id,))
-            conn.commit()
-        finally:
-            conn.close()
-
-    def update_conversation_history(
-        self,
-        run_id: str,
-        agent_name: str,
-        history: list
-    ) -> None:
-        """Update just the conversation history for an agent.
-
-        Args:
-            run_id: UUID of the pipeline run
-            agent_name: Name of the agent
-            history: New conversation history
-        """
-        conn = self._get_connection()
-        try:
-            conn.execute("""
-                UPDATE pipeline_agents
-                SET conversation_history = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE run_id = ? AND name = ?
-            """, (json.dumps(history), run_id, agent_name))
-            conn.commit()
-        finally:
-            conn.close()
-
-    def update_steps_remaining(
-        self,
-        run_id: str,
-        agent_name: str,
-        steps_remaining: int
-    ) -> None:
-        """Update the steps_remaining counter for an agent.
-
-        Args:
-            run_id: UUID of the pipeline run
-            agent_name: Name of the agent
-            steps_remaining: New steps_remaining value
-        """
-        conn = self._get_connection()
-        try:
-            conn.execute("""
-                UPDATE pipeline_agents
-                SET steps_remaining = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE run_id = ? AND name = ?
-            """, (steps_remaining, run_id, agent_name))
-            conn.commit()
-        finally:
-            conn.close()

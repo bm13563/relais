@@ -7,7 +7,6 @@ This package provides:
 - PipelineOrchestrator: Low-level execution engine
 - ToolRegistry: Central registry for pipeline tools
 - SQLiteStateManager: State persistence in SQLite
-- PipelineRouter: Command routing for starting pipelines
 """
 
 from typing import Annotated
@@ -22,8 +21,7 @@ from .executor import (
     ResponseToolNotCalled,
 )
 from .pipeline import Pipeline, cleanup_all_pipeline_states
-from .router import PipelineRouter
-from .utils import parse_command, read_markdown
+from .utils import read_markdown
 from .logging_config import setup_logging, get_logger
 from .agent import PipelineAgent
 from .agent_state import AgentStateManager
@@ -32,7 +30,6 @@ __all__ = [
     # High-level API
     "Pipeline",
     "PipelineStep",
-    "PipelineRouter",
 
     # Execution engine
     "PipelineOrchestrator",
@@ -61,6 +58,5 @@ __all__ = [
 
     # Utilities
     "cleanup_all_pipeline_states",
-    "parse_command",
     "read_markdown",
 ]

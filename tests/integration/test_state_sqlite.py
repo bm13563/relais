@@ -65,19 +65,6 @@ class TestSQLiteStateManagerIntegration:
         assert "step1" in state.step_results
         assert state.step_results["step1"]["output"] == "result1"
 
-    def test_update_args_merges(self, state_manager):
-        """Test that updating args merges with existing."""
-        run_id = state_manager.create_pipeline_run(
-            pipeline_name="test_update_args",
-            start_step="s",
-            args={"a": 1, "b": 2}
-        )
-
-        state_manager.update_args(run_id, {"b": 20, "c": 3})
-
-        state = state_manager.get_pipeline_run(run_id)
-        assert state.args == {"a": 1, "b": 20, "c": 3}
-
     def test_complete_pipeline(self, state_manager):
         """Test marking pipeline as completed."""
         run_id = state_manager.create_pipeline_run(
