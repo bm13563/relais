@@ -35,13 +35,16 @@ log = get_logger('executor')
 
 # Pipeline context injected at end of every step
 PIPELINE_STEP_INSTRUCTION = """[Pipeline Context]
-You are one step in a multi-step pipeline. Focus your thinking on the specific task for this step and call your tool when ready. Don't worry about any future steps, they will be handled by other agents, focus all of your thinking on this step.
+You are one step in a multi-step pipeline. Focus your thinking on the specific task for this step. Don't worry about any future steps, they will be handled by other agents, focus all of your thinking on this step.
 
-Call each tool exactly ONCE per step. Do not make multiple parallel tool calls.
+Do not make multiple parallel tool calls — call tools one at a time.
 
-After calling a tool, STOP and wait for the result. The pipeline will route you to the next step based on the tool's output. Making multiple tool calls will cause only the last one to be processed.
+The next step in the pipeline will only see the output of your response tool. So the entire focus of your effort should go into that call. If you have 10 available turns, use the response tool after 2, then continue reasoning for another 8 turns, that will be 8 turns of context wasted. Call your response tool once you have completed your reasoning."""
 
-The next step in the pipeline will only see the output of your tool call. So the entire focus of your effort should go into the tool call. If you have 10 available turns, use the tool after 2, then continue reasoning for another 8 turns, that will be 8 turns of context wasted. Call your tool once you have completed your reasoning."""
+
+class ResponseToolNotCalled(Exception):
+    """Raised when a step's declared response_tool was not called by the agent."""
+    pass
 
 
 @dataclass
@@ -466,8 +469,16 @@ class PipelineOrchestrator:
         # Build client options from agent settings
         model = agent.model or "opus"
         thinking = agent.thinking or False
-        # Use agent's tools for SDK client (not step's tools - those are soft constraints)
-        allowed_tools = self.tool_registry.get_allowed_tools(agent.tools)
+        # For persistent agents, --allowedTools is set once at CLI startup and
+        # can't change between steps, so use agent.tools (the full set).
+        # Per-step scoping is enforced by the MCP wrapper's is_tool_allowed().
+        # For non-persistent agents, use step.tools for per-step scoping.
+        if agent.is_persistent():
+            allowed_tools = self.tool_registry.get_allowed_tools(agent.tools)
+        elif step.tools:
+            allowed_tools = self.tool_registry.get_allowed_tools(step.tools)
+        else:
+            allowed_tools = self.tool_registry.get_allowed_tools(agent.tools)
 
         # Check if agent already has a client - reuse it across steps
         reusing_client = agent.has_client()
@@ -578,8 +589,21 @@ class PipelineOrchestrator:
                 # Persistent agents still save state (for debug mode resume)
                 self.agent_state_manager.save_agent(run_id, agent)
 
-        # Get routing data from MCP tool capture
-        routing_data = self._get_routing_data_from_registry()
+        # Get routing data from response tool
+        if step.response_tool:
+            captured = self.tool_registry.get_tool_result(step.response_tool)
+            if not captured:
+                raise ResponseToolNotCalled(
+                    f"Step '{step.name}' requires response tool '{step.response_tool}' "
+                    f"but it was not called by the agent."
+                )
+            _, raw_result = captured
+            if isinstance(raw_result, dict) and "content" in raw_result:
+                routing_data = self._extract_from_mcp_content(raw_result["content"])
+            else:
+                routing_data = raw_result
+        else:
+            routing_data = self._get_routing_data_from_registry()
 
         result = StepExecutionResult(
             step_name=step.name,
@@ -660,6 +684,16 @@ class PipelineOrchestrator:
                     f"For this step, you should use: {tools_text}\n"
                     f"Other tools are not available for this step and will be blocked if called."
                 )
+
+        # Inject response tool requirement
+        if step.response_tool:
+            sections.append(
+                f"[Response Tool]\n"
+                f"You MUST call '{step.response_tool}' to complete this step. "
+                f"All tools work normally, but only the output of '{step.response_tool}' "
+                f"is captured and passed to the next step. Your text responses are not "
+                f"visible — only the output of '{step.response_tool}' is used."
+            )
 
         # Always end with pipeline step instruction
         sections.append(PIPELINE_STEP_INSTRUCTION)

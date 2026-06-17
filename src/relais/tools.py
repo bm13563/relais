@@ -221,7 +221,8 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
         # Validate tool access if registry provided
         if registry and tool_name:
             if not registry.is_tool_allowed(tool_name):
-                error_msg = f"Tool '{tool_name}' is only available in specific pipeline steps. Current step: {registry._current_step_name}. This tool is not allowed here."
+                allowed = ", ".join(sorted(registry._current_allowed_tools))
+                error_msg = f"Tool '{tool_name}' is not available in step '{registry._current_step_name}'. Available tools: {allowed}"
                 log.warning(f"Blocked unauthorized tool call: {tool_name} in step {registry._current_step_name}")
                 return {
                     "content": [{
@@ -239,9 +240,9 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
                 kwargs = {name: args.get(name) for name in param_names if name in args}
                 result = await func(**kwargs)
 
-            # Capture result for cross-agent routing
+            # Capture result for routing
             if registry:
-                registry._last_tool_result = (tool_name, result)
+                registry._tool_results.append((tool_name, result))
 
             return result
 
@@ -259,7 +260,7 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
 
             # Still capture error result for routing
             if registry:
-                registry._last_tool_result = (tool_name, error_result)
+                registry._tool_results.append((tool_name, error_result))
 
             return error_result
 
@@ -377,7 +378,7 @@ class ToolRegistry:
         self._sdk_tools: List[Any] = []
         self._current_step_name: Optional[str] = None
         self._current_allowed_tools: set = set()
-        self._last_tool_result: Optional[tuple] = None  # (tool_name, result)
+        self._tool_results: List[tuple] = []  # [(tool_name, result), ...]
         log.info(f"Created tool registry: {name}")
 
     def tool(
@@ -550,6 +551,7 @@ class ToolRegistry:
                 tool_names.add(item)
 
         self._current_allowed_tools = tool_names
+        self._tool_results = []
         log.debug(f"Set current step: {step_name}, allowed tools: {tool_names}")
 
     def is_tool_allowed(self, tool_name: str) -> bool:
@@ -572,11 +574,27 @@ class ToolRegistry:
         return self._name
 
     def get_last_tool_result(self) -> Optional[tuple]:
-        """Get and clear the last tool result.
+        """Get the last tool result.
 
         Returns:
-            Tuple of (tool_name, result) or None if no result captured.
+            Tuple of (tool_name, result) or None if no results captured.
         """
-        result = self._last_tool_result
-        self._last_tool_result = None
-        return result
+        if not self._tool_results:
+            return None
+        return self._tool_results[-1]
+
+    def get_tool_result(self, tool_name: str) -> Optional[tuple]:
+        """Get the result of a specific tool by name.
+
+        If the tool was called multiple times, returns the last result.
+
+        Args:
+            tool_name: Name of the tool to find
+
+        Returns:
+            Tuple of (tool_name, result) or None if tool wasn't called.
+        """
+        for name, result in reversed(self._tool_results):
+            if name == tool_name:
+                return (name, result)
+        return None

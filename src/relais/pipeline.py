@@ -144,8 +144,8 @@ class Pipeline:
                     normalized_tools.append(t)
             agent.tools = normalized_tools
 
-        # Also normalize step tools (these are soft constraints, not registered separately)
-        # Step tools reference tools already registered via agents
+        # Normalize step tools and register any that aren't already registered.
+        # Step tools define which tools are available per-step (used for allowed_tools).
         for step in steps.values():
             normalized_tools = []
             for t in step.tools:

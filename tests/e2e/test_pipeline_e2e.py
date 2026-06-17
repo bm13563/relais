@@ -217,6 +217,7 @@ class TestGreetingBehavior:
             "greet": PipelineStep(
                 name="greet",
                 instruction="greet",
+                response_tool="test_tool",
                 max_turns=3,
                 tools=["send_greeting"],
                 next={"default": None}
@@ -268,6 +269,7 @@ class TestGreetingBehavior:
             "greet": PipelineStep(
                 name="greet",
                 instruction="greet",
+                response_tool="test_tool",
                 max_turns=3,
                 tools=["send_greeting"],
                 next={"default": None}
@@ -312,6 +314,7 @@ class TestClassificationRouting:
             "classify": PipelineStep(
                 name="classify",
                 instruction="classify",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["classify_input"],
                 next={
@@ -326,6 +329,7 @@ class TestClassificationRouting:
             "answer": PipelineStep(
                 name="answer",
                 instruction="answer",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["send_answer"],
                 next={"default": None}
@@ -333,6 +337,7 @@ class TestClassificationRouting:
             "execute": PipelineStep(
                 name="execute",
                 instruction="execute",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["execute_task"],
                 next={"default": None}
@@ -340,6 +345,7 @@ class TestClassificationRouting:
             "chat": PipelineStep(
                 name="chat",
                 instruction="chat",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["send_chat"],
                 next={"default": None}
@@ -409,6 +415,7 @@ class TestClassificationRouting:
             "classify": PipelineStep(
                 name="classify",
                 instruction="classify",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["classify_input"],
                 next={
@@ -423,6 +430,7 @@ class TestClassificationRouting:
             "answer": PipelineStep(
                 name="answer",
                 instruction="answer",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["send_answer"],
                 next={"default": None}
@@ -430,6 +438,7 @@ class TestClassificationRouting:
             "execute": PipelineStep(
                 name="execute",
                 instruction="execute",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["execute_task"],
                 next={"default": None}
@@ -437,6 +446,7 @@ class TestClassificationRouting:
             "chat": PipelineStep(
                 name="chat",
                 instruction="chat",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["send_chat"],
                 next={"default": None}
@@ -501,6 +511,7 @@ class TestClassificationRouting:
             "classify": PipelineStep(
                 name="classify",
                 instruction="classify",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["classify_input"],
                 next={
@@ -515,6 +526,7 @@ class TestClassificationRouting:
             "answer": PipelineStep(
                 name="answer",
                 instruction="answer",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["send_answer"],
                 next={"default": None}
@@ -522,6 +534,7 @@ class TestClassificationRouting:
             "execute": PipelineStep(
                 name="execute",
                 instruction="execute",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["execute_task"],
                 next={"default": None}
@@ -529,6 +542,7 @@ class TestClassificationRouting:
             "chat": PipelineStep(
                 name="chat",
                 instruction="chat",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["send_chat"],
                 next={"default": None}
@@ -597,6 +611,7 @@ class TestSubagentDataFlow:
             "research": PipelineStep(
                 name="research",
                 instruction="research",
+                response_tool="test_tool",
                 max_turns=3,
                 tools=["search"],
                 subagent=True,
@@ -605,6 +620,7 @@ class TestSubagentDataFlow:
             "summarize": PipelineStep(
                 name="summarize",
                 instruction="summarize",
+                response_tool="test_tool",
                 max_turns=3,
                 tools=["create_summary"],
                 subagent=False,
@@ -696,6 +712,7 @@ class TestHookDataInjection:
             "contextual": PipelineStep(
                 name="contextual",
                 instruction="contextual",
+                response_tool="test_tool",
                 max_turns=3,
                 tools=["contextual_response"],
                 hooks=[time_hook, user_hook],
@@ -760,6 +777,7 @@ class TestMultiStepDataPassing:
             "step1": PipelineStep(
                 name="step1",
                 instruction="process",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["produce_data"],
                 next={"default": "step2"}
@@ -767,6 +785,7 @@ class TestMultiStepDataPassing:
             "step2": PipelineStep(
                 name="step2",
                 instruction="process",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["consume_data"],
                 next={"default": None}
@@ -856,6 +875,7 @@ This tests that subsequent steps can see the original user request.
             "step1": PipelineStep(
                 name="step1",
                 instruction="step1_pass",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["step1_tool"],
                 next={"default": "step2"}
@@ -863,6 +883,7 @@ This tests that subsequent steps can see the original user request.
             "step2": PipelineStep(
                 name="step2",
                 instruction="step2_echo",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["echo_input"],
                 next={"default": None}
@@ -915,6 +936,7 @@ class TestModelConfiguration:
             "main": PipelineStep(
                 name="main",
                 instruction="process",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["main_tool"],
                 subagent=False,
@@ -923,6 +945,7 @@ class TestModelConfiguration:
             "sub": PipelineStep(
                 name="sub",
                 instruction="process",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["sub_tool"],
                 subagent=True,
@@ -974,6 +997,7 @@ class TestPipelineArgs:
             "process": PipelineStep(
                 name="process",
                 instruction="process",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["use_args"],
                 next={"default": None}
@@ -1040,6 +1064,7 @@ IMPORTANT: Do NOT call tool1. Only call tool2.
             "step1": PipelineStep(
                 name="step1",
                 instruction="step1_tool",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["tool1"],
                 next={"default": "step2"}
@@ -1047,6 +1072,7 @@ IMPORTANT: Do NOT call tool1. Only call tool2.
             "step2": PipelineStep(
                 name="step2",
                 instruction="step2_tool",
+                response_tool="test_tool",
                 max_turns=2,
                 tools=["tool2"],
                 next={"default": None}

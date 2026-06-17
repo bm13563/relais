@@ -29,7 +29,7 @@ class TestPipelineCreate:
         mock_orchestrator_class.return_value = mock_orchestrator
 
         steps = {
-            "start": PipelineStep(name="start", instruction="greet", next={"default": None}, agent=test_agent)
+            "start": PipelineStep(name="start", instruction="greet", response_tool="test_tool", next={"default": None}, agent=test_agent)
         }
 
         pipeline = Pipeline.create(
@@ -54,8 +54,8 @@ class TestPipelineCreate:
         mock_orchestrator_class.return_value = MagicMock()
 
         steps = {
-            "start": PipelineStep(name="start", instruction="greet", next={"default": "end"}, agent=test_agent),
-            "end": PipelineStep(name="end", instruction="analyze", next={"default": None}, agent=test_agent)
+            "start": PipelineStep(name="start", instruction="greet", response_tool="test_tool", next={"default": "end"}, agent=test_agent),
+            "end": PipelineStep(name="end", instruction="analyze", response_tool="test_tool", next={"default": None}, agent=test_agent)
         }
 
         pipeline = Pipeline.create(
@@ -79,7 +79,7 @@ class TestPipelineCreate:
         mock_orchestrator = MagicMock()
         mock_orchestrator_class.return_value = mock_orchestrator
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         Pipeline.create(
             name="registered",
             steps=steps,
@@ -104,7 +104,7 @@ class TestPipelineTool:
         mock_state_class.create.return_value = MagicMock()
         mock_orchestrator_class.return_value = MagicMock()
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         pipeline = Pipeline.create(
             name="tooled",
             steps=steps,
@@ -138,7 +138,7 @@ class TestPipelineRun:
         mock_orchestrator.start_pipeline.return_value = "run-123"
         mock_orchestrator_class.return_value = mock_orchestrator
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         pipeline = Pipeline.create(
             name="runner",
             steps=steps,
@@ -166,7 +166,7 @@ class TestPipelineRun:
         mock_orchestrator.start_pipeline.return_value = "run-456"
         mock_orchestrator_class.return_value = mock_orchestrator
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         pipeline = Pipeline.create(
             name="simple",
             steps=steps,
@@ -196,7 +196,7 @@ class TestPipelineResume:
         mock_orchestrator = MagicMock()
         mock_orchestrator_class.return_value = mock_orchestrator
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         pipeline = Pipeline.create(
             name="resumable",
             steps=steps,
@@ -236,7 +236,7 @@ class TestPipelineGetRun:
         mock_state_class.create.return_value = mock_state
         mock_orchestrator_class.return_value = MagicMock()
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         pipeline = Pipeline.create(
             name="test",
             steps=steps,
@@ -260,7 +260,7 @@ class TestPipelineGetRun:
         mock_state_class.create.return_value = mock_state
         mock_orchestrator_class.return_value = MagicMock()
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         pipeline = Pipeline.create(
             name="test",
             steps=steps,
@@ -285,7 +285,7 @@ class TestPipelineListRuns:
         mock_state_class.create.return_value = mock_state
         mock_orchestrator_class.return_value = MagicMock()
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         pipeline = Pipeline.create(
             name="my_pipeline",
             steps=steps,
@@ -314,7 +314,7 @@ class TestPipelineInitializeDb:
         mock_state_class.create.return_value = mock_state
         mock_orchestrator_class.return_value = MagicMock()
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         pipeline = Pipeline.create(
             name="test",
             steps=steps,
@@ -380,7 +380,7 @@ class TestPipelineAttributes:
         mock_state_class.create.return_value = MagicMock()
         mock_orchestrator_class.return_value = MagicMock()
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         pipeline = Pipeline.create(
             name="test",
             steps=steps,
@@ -401,7 +401,7 @@ class TestPipelineAttributes:
         mock_state_class.create.return_value = mock_state
         mock_orchestrator_class.return_value = MagicMock()
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         pipeline = Pipeline.create(
             name="test",
             steps=steps,
@@ -420,7 +420,7 @@ class TestPipelineAttributes:
         mock_orchestrator = MagicMock()
         mock_orchestrator_class.return_value = mock_orchestrator
 
-        steps = {"s": PipelineStep(name="s", instruction="greet", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
         pipeline = Pipeline.create(
             name="test",
             steps=steps,

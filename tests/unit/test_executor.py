@@ -24,7 +24,7 @@ class TestPipelineConfig:
 
     def test_create_minimal_config(self):
         """Test creating config with minimal fields."""
-        steps = {"start": PipelineStep(name="start", instruction="test", agent=test_agent)}
+        steps = {"start": PipelineStep(name="start", instruction="test", response_tool="test_tool", agent=test_agent)}
         config = PipelineConfig(
             name="test",
             steps=steps,
@@ -37,7 +37,7 @@ class TestPipelineConfig:
 
     def test_create_full_config(self):
         """Test creating config with all fields."""
-        steps = {"s": PipelineStep(name="s", instruction="test", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="test", response_tool="test_tool", agent=test_agent)}
         config = PipelineConfig(
             name="full",
             steps=steps,
@@ -123,7 +123,7 @@ class TestRegisterPipeline:
             instructions_dir=Path("/instructions")
         )
 
-        steps = {"s": PipelineStep(name="s", instruction="test", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="test", response_tool="test_tool", agent=test_agent)}
         config = PipelineConfig(
             name="my_pipeline",
             steps=steps,
@@ -145,7 +145,7 @@ class TestRegisterPipeline:
         )
 
         for name in ["pipeline1", "pipeline2", "pipeline3"]:
-            steps = {"s": PipelineStep(name="s", instruction="test", agent=test_agent)}
+            steps = {"s": PipelineStep(name="s", instruction="test", response_tool="test_tool", agent=test_agent)}
             config = PipelineConfig(
                 name=name,
                 steps=steps,
@@ -168,7 +168,7 @@ class TestBuildStepContext:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
+        step = PipelineStep(name="test", instruction="test_step", response_tool="test_tool", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -198,7 +198,7 @@ class TestBuildStepContext:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
+        step = PipelineStep(name="test", instruction="test_step", response_tool="test_tool", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -226,7 +226,7 @@ class TestBuildStepContext:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
+        step = PipelineStep(name="test", instruction="test_step", response_tool="test_tool", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -259,6 +259,7 @@ class TestBuildStepContext:
         step = PipelineStep(
             name="test",
             instruction="test_step",
+            response_tool="test_tool",
             hooks=[my_hook],
             agent=test_agent
         )
@@ -289,7 +290,7 @@ class TestBuildStepContext:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="nonexistent", agent=test_agent)
+        step = PipelineStep(name="test", instruction="nonexistent", response_tool="test_tool", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -576,7 +577,7 @@ class TestStartPipeline:
             instructions_dir=Path("/instructions")
         )
 
-        steps = {"s": PipelineStep(name="s", instruction="test", agent=test_agent)}
+        steps = {"s": PipelineStep(name="s", instruction="test", response_tool="test_tool", agent=test_agent)}
         config = PipelineConfig(
             name="test",
             steps=steps,
@@ -612,6 +613,7 @@ class TestExecuteStep:
         step = PipelineStep(
             name="test_step",
             instruction="test",
+            response_tool="test_tool",
             max_turns=2,
             tools=["tool1", "tool2"],
             agent=test_agent_local
@@ -677,6 +679,7 @@ class TestExecuteStep:
         step = PipelineStep(
             name="main",
             instruction="test",
+            response_tool="test_tool",
             max_turns=5,
             tools=["tool1"],
             agent=test_agent_local
@@ -747,6 +750,7 @@ class TestExecuteStep:
         step = PipelineStep(
             name="research",
             instruction="test",
+            response_tool="test_tool",
             max_turns=10,
             agent=research_agent
         )
@@ -820,6 +824,7 @@ class TestExecutePipelineLoop:
         step = PipelineStep(
             name="only",
             instruction="test_step",
+            response_tool="test_tool",
             next={"default": None},  # Ends pipeline
             agent=test_agent
         )
@@ -873,18 +878,21 @@ class TestExecutePipelineLoop:
             "first": PipelineStep(
                 name="first",
                 instruction="test_step",
+                response_tool="test_tool",
                 next={"default": "second"},
                 agent=test_agent
             ),
             "second": PipelineStep(
                 name="second",
                 instruction="test_step",
+                response_tool="test_tool",
                 next={"default": "third"},
                 agent=test_agent
             ),
             "third": PipelineStep(
                 name="third",
                 instruction="test_step",
+                response_tool="test_tool",
                 next={"default": None},
                 agent=test_agent
             )
@@ -940,6 +948,7 @@ class TestExecutePipelineLoop:
             "router": PipelineStep(
                 name="router",
                 instruction="test_step",
+                response_tool="test_tool",
                 next={
                     "field": "route",
                     "routes": [
@@ -950,9 +959,9 @@ class TestExecutePipelineLoop:
                 },
                 agent=test_agent
             ),
-            "handle_a": PipelineStep(name="handle_a", instruction="test_step", next={"default": None}, agent=test_agent),
-            "handle_b": PipelineStep(name="handle_b", instruction="test_step", next={"default": None}, agent=test_agent),
-            "handle_default": PipelineStep(name="handle_default", instruction="test_step", next={"default": None}, agent=test_agent)
+            "handle_a": PipelineStep(name="handle_a", instruction="test_step", response_tool="test_tool", next={"default": None}, agent=test_agent),
+            "handle_b": PipelineStep(name="handle_b", instruction="test_step", response_tool="test_tool", next={"default": None}, agent=test_agent),
+            "handle_default": PipelineStep(name="handle_default", instruction="test_step", response_tool="test_tool", next={"default": None}, agent=test_agent)
         }
 
         config = PipelineConfig(
@@ -1161,7 +1170,7 @@ class TestBuildStepContextWithPreviousMessages:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
+        step = PipelineStep(name="test", instruction="test_step", response_tool="test_tool", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -1196,7 +1205,7 @@ class TestBuildStepContextWithPreviousMessages:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
+        step = PipelineStep(name="test", instruction="test_step", response_tool="test_tool", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},
@@ -1224,7 +1233,7 @@ class TestBuildStepContextWithPreviousMessages:
             instructions_dir=test_instructions_dir
         )
 
-        step = PipelineStep(name="test", instruction="test_step", agent=test_agent)
+        step = PipelineStep(name="test", instruction="test_step", response_tool="test_tool", agent=test_agent)
         config = PipelineConfig(
             name="test_pipeline",
             steps={"test": step},

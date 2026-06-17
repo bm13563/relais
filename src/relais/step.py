@@ -20,6 +20,10 @@ class PipelineStep:
     Attributes:
         name: Unique identifier for this step
         instruction: Name of the instruction file (without .md extension)
+        response_tool: Name of the tool that provides this step's structured output.
+                       Required. The output of this tool becomes routing_data, which
+                       is used for routing decisions and passed to the next step.
+                       If the agent doesn't call this tool, the step fails.
         tools: List of tools available for this step. Can be tool names (strings)
                or @tool decorated functions
         hooks: List of callable functions that provide context data
@@ -32,10 +36,18 @@ class PipelineStep:
     """
     name: str
     instruction: str
+    response_tool: str = ""  # Name of the tool that provides this step's output
     tools: List[Union[str, Callable]] = field(default_factory=list)
     hooks: List[Callable[[], Any]] = field(default_factory=list)
     next: dict = field(default_factory=lambda: {"default": None})
     agent: Optional['PipelineAgent'] = None
+
+    def __post_init__(self):
+        if not self.response_tool:
+            raise ValueError(
+                f"Step '{self.name}' is missing required 'response_tool'. "
+                f"Every step must declare which tool provides its output."
+            )
 
     def resolve_next(self, tool_result: dict) -> Optional[str]:
         """Determine the next step based on tool result.

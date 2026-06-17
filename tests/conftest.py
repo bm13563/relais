@@ -49,6 +49,7 @@ def simple_step():
     return PipelineStep(
         name="simple",
         instruction="test_step",
+        response_tool="test_tool",
         max_turns=5,
         tools=["test_tool"],
         next={"default": None}
@@ -61,6 +62,7 @@ def routing_step():
     return PipelineStep(
         name="router",
         instruction="analyze",
+        response_tool="test_tool",
         max_turns=3,
         tools=["classify"],
         next={
@@ -87,6 +89,7 @@ def step_with_hooks():
     return PipelineStep(
         name="hooked",
         instruction="test_step",
+        response_tool="test_tool",
         max_turns=5,
         tools=["context_tool"],
         hooks=[time_hook, user_hook],
@@ -100,6 +103,7 @@ def subagent_step():
     return PipelineStep(
         name="subagent_step",
         instruction="process",
+        response_tool="test_tool",
         max_turns=10,
         tools=["research_tool"],
         use_subagent=True,
@@ -205,6 +209,7 @@ def sample_steps():
         "start": PipelineStep(
             name="start",
             instruction="greet",
+            response_tool="test_tool",
             max_turns=3,
             tools=["greet"],
             next={"default": "process"}
@@ -212,6 +217,7 @@ def sample_steps():
         "process": PipelineStep(
             name="process",
             instruction="process",
+            response_tool="test_tool",
             max_turns=5,
             tools=["calculate"],
             next={"default": None}
@@ -226,6 +232,7 @@ def routing_steps():
         "analyze": PipelineStep(
             name="analyze",
             instruction="analyze",
+            response_tool="test_tool",
             max_turns=2,
             tools=["classify"],
             next={
@@ -240,6 +247,7 @@ def routing_steps():
         "handle_a": PipelineStep(
             name="handle_a",
             instruction="process",
+            response_tool="test_tool",
             max_turns=3,
             tools=["process_a"],
             next={"default": None}
@@ -247,6 +255,7 @@ def routing_steps():
         "handle_b": PipelineStep(
             name="handle_b",
             instruction="process",
+            response_tool="test_tool",
             max_turns=3,
             tools=["process_b"],
             next={"default": None}
@@ -254,6 +263,7 @@ def routing_steps():
         "handle_default": PipelineStep(
             name="handle_default",
             instruction="process",
+            response_tool="test_tool",
             max_turns=3,
             tools=["process_default"],
             next={"default": None}

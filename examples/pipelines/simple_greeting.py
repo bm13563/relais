@@ -25,6 +25,7 @@ def main():
             "greet": PipelineStep(
                 name="greet",
                 instruction="greet",
+                response_tool="send_greeting",
                 max_turns=3,
                 tools=[send_greeting],
                 next={"default": None}

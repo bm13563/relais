@@ -19,6 +19,7 @@ from .executor import (
     PipelineOrchestrator,
     PipelineConfig,
     StepExecutionResult,
+    ResponseToolNotCalled,
 )
 from .pipeline import Pipeline, cleanup_all_pipeline_states
 from .router import PipelineRouter
@@ -37,6 +38,7 @@ __all__ = [
     "PipelineOrchestrator",
     "PipelineConfig",
     "StepExecutionResult",
+    "ResponseToolNotCalled",
 
     # Agents
     "PipelineAgent",

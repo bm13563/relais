@@ -12,7 +12,8 @@ class TestPipelineStepCreation:
         """Test creating step with minimal required fields."""
         step = PipelineStep(
             name="minimal",
-            instruction="test"
+            instruction="test",
+            response_tool="test_tool"
         )
         assert step.name == "minimal"
         assert step.instruction == "test"
@@ -28,6 +29,7 @@ class TestPipelineStepCreation:
         step = PipelineStep(
             name="full",
             instruction="full_instruction",
+            response_tool="test_tool",
             next={"default": "next_step"},
             max_turns=15,
             tools=["tool1", "tool2", "tool3"],
@@ -47,6 +49,7 @@ class TestPipelineStepCreation:
         step = PipelineStep(
             name="router",
             instruction="router_instruction",
+            response_tool="test_tool",
             next={
                 "field": "status",
                 "routes": [
@@ -69,6 +72,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="simple",
             instruction="test",
+            response_tool="test_tool",
             next={"default": "next_step"}
         )
         result = step.resolve_next({})
@@ -79,6 +83,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="terminal",
             instruction="test",
+            response_tool="test_tool",
             next={"default": None}
         )
         result = step.resolve_next({})
@@ -89,6 +94,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="router",
             instruction="test",
+            response_tool="test_tool",
             next={
                 "field": "category",
                 "routes": [
@@ -106,6 +112,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="router",
             instruction="test",
+            response_tool="test_tool",
             next={
                 "field": "category",
                 "routes": [
@@ -123,6 +130,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="router",
             instruction="test",
+            response_tool="test_tool",
             next={
                 "field": "category",
                 "routes": [
@@ -140,6 +148,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="router",
             instruction="test",
+            response_tool="test_tool",
             next={
                 "field": "category",
                 "routes": [
@@ -156,6 +165,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="router",
             instruction="test",
+            response_tool="test_tool",
             next={
                 "field": "category",
                 "routes": [
@@ -172,6 +182,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="router",
             instruction="test",
+            response_tool="test_tool",
             next={
                 "field": "category",
                 "routes": [
@@ -189,6 +200,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="router",
             instruction="test",
+            response_tool="test_tool",
             next={
                 "field": "score",
                 "routes": [
@@ -207,6 +219,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="router",
             instruction="test",
+            response_tool="test_tool",
             next={
                 "field": "success",
                 "routes": [
@@ -224,6 +237,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="router",
             instruction="test",
+            response_tool="test_tool",
             next={
                 "field": "category",
                 "default": "fallback"
@@ -237,6 +251,7 @@ class TestResolveNext:
         step = PipelineStep(
             name="router",
             instruction="test",
+            response_tool="test_tool",
             next={
                 "field": "category",
                 "routes": [],
@@ -254,7 +269,8 @@ class TestGetInstruction:
         """Test loading instruction file."""
         step = PipelineStep(
             name="test",
-            instruction="test_step"
+            instruction="test_step",
+            response_tool="test_tool"
         )
         content = step.get_instruction(test_instructions_dir)
         assert "# Test Step" in content
@@ -264,7 +280,8 @@ class TestGetInstruction:
         """Test loading different instruction file."""
         step = PipelineStep(
             name="greet",
-            instruction="greet"
+            instruction="greet",
+            response_tool="test_tool"
         )
         content = step.get_instruction(test_instructions_dir)
         assert "# Greeting" in content
@@ -273,7 +290,8 @@ class TestGetInstruction:
         """Test that missing instruction file raises error."""
         step = PipelineStep(
             name="missing",
-            instruction="nonexistent_instruction"
+            instruction="nonexistent_instruction",
+            response_tool="test_tool"
         )
         with pytest.raises(FileNotFoundError):
             step.get_instruction(test_instructions_dir)
@@ -286,7 +304,8 @@ class TestGetHookData:
         """Test getting hook data when no hooks defined."""
         step = PipelineStep(
             name="no_hooks",
-            instruction="test"
+            instruction="test",
+            response_tool="test_tool"
         )
         result = step.get_hook_data()
         assert result == []
@@ -299,6 +318,7 @@ class TestGetHookData:
         step = PipelineStep(
             name="hooked",
             instruction="test",
+            response_tool="test_tool",
             hooks=[my_hook]
         )
         result = step.get_hook_data()
@@ -318,6 +338,7 @@ class TestGetHookData:
         step = PipelineStep(
             name="multi_hooked",
             instruction="test",
+            response_tool="test_tool",
             hooks=[hook1, hook2, hook3]
         )
         result = step.get_hook_data()
@@ -337,6 +358,7 @@ class TestGetHookData:
         step = PipelineStep(
             name="varied",
             instruction="test",
+            response_tool="test_tool",
             hooks=[string_hook, list_hook, dict_hook]
         )
         result = step.get_hook_data()
@@ -352,6 +374,7 @@ class TestGetHookData:
         step = PipelineStep(
             name="none_hook",
             instruction="test",
+            response_tool="test_tool",
             hooks=[none_hook]
         )
         result = step.get_hook_data()
@@ -368,6 +391,7 @@ class TestGetHookData:
         step = PipelineStep(
             name="counting",
             instruction="test",
+            response_tool="test_tool",
             hooks=[counting_hook]
         )
 
@@ -398,6 +422,7 @@ class TestGetHookData:
         step = PipelineStep(
             name="ordered",
             instruction="test",
+            response_tool="test_tool",
             hooks=[hook_a, hook_b, hook_c]
         )
         step.get_hook_data()
@@ -412,12 +437,14 @@ class TestStepEquality:
         step1 = PipelineStep(
             name="test",
             instruction="test_instruction",
+            response_tool="test_tool",
             max_turns=5,
             tools=["tool1"]
         )
         step2 = PipelineStep(
             name="test",
             instruction="test_instruction",
+            response_tool="test_tool",
             max_turns=5,
             tools=["tool1"]
         )
@@ -425,12 +452,12 @@ class TestStepEquality:
 
     def test_steps_with_different_names_not_equal(self):
         """Test that steps with different names are not equal."""
-        step1 = PipelineStep(name="step1", instruction="test")
-        step2 = PipelineStep(name="step2", instruction="test")
+        step1 = PipelineStep(name="step1", instruction="test", response_tool="test_tool")
+        step2 = PipelineStep(name="step2", instruction="test", response_tool="test_tool")
         assert step1 != step2
 
     def test_steps_with_different_tools_not_equal(self):
         """Test that steps with different tools are not equal."""
-        step1 = PipelineStep(name="test", instruction="test", tools=["a"])
-        step2 = PipelineStep(name="test", instruction="test", tools=["b"])
+        step1 = PipelineStep(name="test", instruction="test", response_tool="test_tool", tools=["a"])
+        step2 = PipelineStep(name="test", instruction="test", response_tool="test_tool", tools=["b"])
         assert step1 != step2

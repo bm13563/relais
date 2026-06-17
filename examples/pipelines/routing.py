@@ -25,6 +25,7 @@ def main():
             "analyze": PipelineStep(
                 name="analyze",
                 instruction="analyze",
+                response_tool="classify_request",
                 max_turns=2,
                 tools=[classify_request],
                 next={
@@ -40,6 +41,7 @@ def main():
             "answer_question": PipelineStep(
                 name="answer_question",
                 instruction="answer_question",
+                response_tool="answer",
                 max_turns=3,
                 tools=[answer],
                 next={"default": None}
@@ -47,6 +49,7 @@ def main():
             "perform_task": PipelineStep(
                 name="perform_task",
                 instruction="perform_task",
+                response_tool="execute_task",
                 max_turns=5,
                 tools=[execute_task],
                 next={"default": None}
@@ -54,6 +57,7 @@ def main():
             "chat": PipelineStep(
                 name="chat",
                 instruction="chat",
+                response_tool="chat_response",
                 max_turns=2,
                 tools=[chat_response],
                 next={"default": None}

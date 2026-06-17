@@ -28,6 +28,7 @@ def main():
             "research": PipelineStep(
                 name="research",
                 instruction="research",
+                response_tool="search",
                 max_turns=5,
                 tools=[search],
                 subagent=True,
@@ -36,6 +37,7 @@ def main():
             "summarize": PipelineStep(
                 name="summarize",
                 instruction="summarize",
+                response_tool="create_summary",
                 max_turns=3,
                 tools=[create_summary],
                 next={"default": None}

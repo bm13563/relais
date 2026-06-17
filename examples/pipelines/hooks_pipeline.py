@@ -28,6 +28,7 @@ def main():
             "process_with_context": PipelineStep(
                 name="process_with_context",
                 instruction="greet",
+                response_tool="contextual_greeting",
                 max_turns=3,
                 tools=[contextual_greeting],
                 hooks=[get_current_time, get_user_preferences],
@@ -36,6 +37,7 @@ def main():
             "status_report": PipelineStep(
                 name="status_report",
                 instruction="chat",
+                response_tool="report_status",
                 max_turns=2,
                 tools=[report_status],
                 hooks=[get_system_status, get_current_time],
