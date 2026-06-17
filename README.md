@@ -16,14 +16,15 @@ was granted and does exactly one thing before handing off. It enables you to:
 - Route between steps based on a step's structured output (conditional branching)
 - Inject dynamic context via hooks (sync or async)
 - Isolate steps onto separate agents (separate clients, separate context) or share
-  one persistent agent across steps
-- Persist pipeline and agent state to SQLite, including step-through debugging
+  one agent across steps
+- Persist run results to SQLite and log structured step events to spool
 
 ### Core model
 
-- **Agent** — owns a model, a `max_turns` budget, and a tool set. May persist across
-  steps or be scoped to a number of steps. Two different agents have two different
-  SDK clients and therefore isolated conversation context.
+- **Agent** — owns a model, a `max_turns` budget, and a tool set. It connects one
+  live SDK client when it first runs and keeps it for the whole pipeline run, so
+  its conversation context lives in RAM. Two different agents have two different
+  clients and therefore isolated context.
 - **Step** — names an instruction file, the tools available *for that step*, the
   `response_tool` whose output is captured, the agent that runs it, and routing rules.
 - **response_tool** — every step must declare one. Only that tool's output is captured,
@@ -156,35 +157,17 @@ steps = {
 ```
 
 Give two steps the **same** agent instance and the agent persists across them,
-keeping its conversation history live in the SDK client. Use `steps=N` on an agent
-to expire it after N steps.
+keeping its conversation history live in its SDK client for the whole run.
 
-### Session Mode (Step-Through Debugging)
+### Logging & debugging (spool)
 
-Run pipelines one step at a time for debugging and analysis:
-
-```python
-# Run first step, then pause
-run_id = pipeline.run("Analyze the data", session="debug1")
-# Pipeline pauses after first step completes
-
-# Inspect results, analyze output...
-state = pipeline.get_run(run_id)
-print(state.step_results)
-
-# Continue to next step
-pipeline.run("Analyze the data", session="debug1")
-# Pipeline pauses after second step
-
-# Keep going until pipeline completes
-pipeline.run("Analyze the data", session="debug1")
-```
-
-**How it works:**
-- First call with a session name creates a new run, executes one step, pauses
-- Subsequent calls with the same session name resume from where it left off
-- When pipeline finishes all steps, session is marked `completed`
-- Running with the same session name after completion starts a new run from the beginning
+A run executes start-to-finish in one process. Instead of a pause/resume debug
+mode, relais logs structured step events to [spool](https://github.com/bm13563/spool):
+each pipeline writes its own queryable JSONL stream
+(`~/.local/share/tdl-crypto/logs/relais.<pipeline>.jsonl`) with events like
+`run_started`, `step_start` (including the full context), `step_done` (turns,
+routing data, next step), and `run_completed`. After a run, inspect results via
+`pipeline.get_run(run_id)` and trace what happened with the spool TUI or reader API.
 
 ### Tool Gating (defined, not recommended)
 
@@ -293,8 +276,8 @@ relais/
 │   ├── agent.py         # PipelineAgent definition + lifecycle
 │   ├── executor.py      # Pipeline execution engine
 │   ├── tools.py         # Tool registry, @tool decorator, per-step gating
-│   ├── state.py         # SQLite persistence (pipeline runs + agent state)
-│   ├── logging_config.py # Logging setup
+│   ├── state.py         # SQLite persistence for pipeline runs
+│   ├── logging_config.py # spool logging setup
 │   └── utils.py         # Utilities
 ├── examples/
 │   ├── pipelines/       # Example pipeline scripts
@@ -352,8 +335,7 @@ PipelineStep(
 PipelineAgent(
     name: str,                          # Unique agent identifier
     tools: List[Union[str, Callable]] = [],  # Tools this agent may use
-    steps: int = None,                  # None = persists across all steps; N = expires after N
-    max_turns: int = 10,                # Max API round-trips per step (one model
+    max_turns: int = 10,                # Max model round-trips per step
     model: str = "opus",                # Model (opus, sonnet, haiku)
     thinking: bool = False,             # Enable extended thinking
 )

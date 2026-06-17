@@ -217,7 +217,7 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
             if not registry.is_tool_allowed(tool_name):
                 allowed = ", ".join(sorted(registry._current_allowed_tools))
                 error_msg = f"Tool '{tool_name}' is not available in step '{registry._current_step_name}'. Available tools: {allowed}"
-                log.warning(f"Blocked unauthorized tool call: {tool_name} in step {registry._current_step_name}")
+                log.warning("tool_blocked", tool=tool_name, step=registry._current_step_name, allowed=allowed)
                 return {
                     "content": [{
                         "type": "text",
@@ -238,7 +238,7 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
 
         except Exception as e:
             error_msg = f"Tool '{tool_name}' failed: {e}\n{traceback.format_exc()}"
-            log.error(error_msg)
+            log.error("tool_error", tool=tool_name, error=str(e))
 
             error_result = {
                 "content": [{

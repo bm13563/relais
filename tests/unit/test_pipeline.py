@@ -12,7 +12,7 @@ from relais.state import PipelineRunState
 
 
 # Test agent used across all tests
-test_agent = PipelineAgent(name="test_agent", steps=None, model="opus")
+test_agent = PipelineAgent(name="test_agent", model="opus")
 
 
 class TestPipelineCreate:
@@ -154,7 +154,6 @@ class TestPipelineRun:
             pipeline_name="runner",
             initial_input="initial input",
             args={"key": "value"},
-            session=None
         )
 
     @patch('relais.pipeline.SQLiteStateManager')
@@ -181,34 +180,6 @@ class TestPipelineRun:
             pipeline_name="simple",
             initial_input="just input",
             args=None,
-            session=None
-        )
-
-
-class TestPipelineResume:
-    """Tests for Pipeline.resume method."""
-
-    @patch('relais.pipeline.SQLiteStateManager')
-    @patch('relais.pipeline.PipelineOrchestrator')
-    def test_resume_calls_orchestrator(self, mock_orchestrator_class, mock_state_class, test_instructions_dir):
-        """Test that resume delegates to orchestrator."""
-        mock_state_class.create.return_value = MagicMock()
-        mock_orchestrator = MagicMock()
-        mock_orchestrator_class.return_value = mock_orchestrator
-
-        steps = {"s": PipelineStep(name="s", instruction="greet", response_tool="test_tool", agent=test_agent)}
-        pipeline = Pipeline.create(
-            name="resumable",
-            steps=steps,
-            start_step="s",
-            instructions_dir=test_instructions_dir,
-            db_config={}
-        )
-
-        pipeline.resume("run-to-resume", "new input")
-
-        mock_orchestrator.resume_pipeline.assert_called_once_with(
-            "run-to-resume", "new input"
         )
 
 
@@ -226,9 +197,7 @@ class TestPipelineGetRun:
             pipeline_name="test",
             current_step="step1",
             status="running",
-            session=None,
             args={},
-            conversation_history=[],
             step_results={},
             created_at=now,
             updated_at=now
@@ -336,9 +305,9 @@ class TestCleanupAllPipelineStates:
         mock_state = MagicMock()
         now = datetime.now()
         mock_state.get_pipeline_runs.return_value = [
-            PipelineRunState("run-1", "p", "s", "completed", None, {}, [], {}, now, now),
-            PipelineRunState("run-2", "p", "s", "failed", None, {}, [], {}, now, now),
-            PipelineRunState("run-3", "p", "s", "running", None, {}, [], {}, now, now),
+            PipelineRunState("run-1", "p", "s", "completed", {}, {}, now, now),
+            PipelineRunState("run-2", "p", "s", "failed", {}, {}, now, now),
+            PipelineRunState("run-3", "p", "s", "running", {}, {}, now, now),
         ]
 
         cleanup_all_pipeline_states(mock_state)

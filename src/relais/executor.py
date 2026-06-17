@@ -1,9 +1,10 @@
-"""Pipeline execution engine using Claude Agent SDK.
+"""Pipeline execution engine using the Claude Agent SDK.
 
-Uses ClaudeSDKClient for all step execution since custom MCP tools require it.
-The SDK handles the agentic loop internally - we configure it via ClaudeAgentOptions.
-
-Note: query() does NOT support custom tools - only ClaudeSDKClient does.
+Each agent connects one live ClaudeSDKClient on its first step and keeps it for
+the whole pipeline run, so its conversation context lives in the SDK client. A
+run executes start-to-finish in one process; results are persisted to SQLite for
+after-the-fact inspection. Step-level detail is logged to spool as structured
+events (see `spool` — query the JSONL stream to debug a run).
 """
 
 from __future__ import annotations
@@ -11,7 +12,6 @@ import asyncio
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -30,9 +30,8 @@ from .state import SQLiteStateManager
 from .agent import PipelineAgent
 from .logging_config import get_logger
 
-log = get_logger('executor')
 
-# Pipeline context injected at end of every step
+# Pipeline context appended to every step's prompt.
 PIPELINE_STEP_INSTRUCTION = """[Pipeline Context]
 You are one step in a multi-step pipeline. Focus your thinking on the specific task for this step. Don't worry about any future steps, they will be handled by other agents, focus all of your thinking on this step.
 
@@ -52,12 +51,12 @@ class PipelineConfig:
 
     Attributes:
         name: Unique identifier for the pipeline
-        steps: Dictionary of step definitions keyed by name
+        steps: Step definitions keyed by name
         start_step: Name of the first step to execute
         instructions_dir: Path to instruction markdown files
-        agents: Dictionary of PipelineAgent instances keyed by name
+        agents: PipelineAgent instances keyed by name
         cwd: Working directory for file operations
-        verbose: If True, print full step output to console
+        verbose: If True, print step output to console
     """
     name: str
     steps: Dict[str, PipelineStep]
@@ -68,7 +67,6 @@ class PipelineConfig:
     verbose: bool = False
 
     def __post_init__(self):
-        """Initialize agents dict if None."""
         if self.agents is None:
             self.agents = {}
 
@@ -80,25 +78,20 @@ class StepExecutionResult:
     final_response: str
     tool_results: List[dict]
     turns_used: int
-    stop_reason: str  # 'success', 'max_turns', 'error'
+    stop_reason: str  # 'success' or 'error'
     routing_data: Optional[dict] = None
-    session_id: Optional[str] = None
-    messages: Optional[List[dict]] = None  # Captured messages for context persistence
 
 
 class PipelineOrchestrator:
-    """Main orchestrator for pipeline execution using Claude Agent SDK.
-
-    Uses ClaudeSDKClient for continuous sessions and query() for isolated
-    subagent execution. The SDK handles max_turns internally.
+    """Runs pipelines step by step using the Claude Agent SDK.
 
     Execution flow:
-    1. Build context for current step (instructions, previous result)
-    2. Execute step via SDK (main session or isolated query)
-    3. Extract routing data from tool results
-    4. Apply routing rules to determine next step
-    5. Persist state to SQLite
-    6. Repeat until pipeline ends
+    1. Build the context prompt for the current step.
+    2. Run the step on its agent's live client (created once, reused).
+    3. Capture the step's response_tool output as routing data.
+    4. Apply routing rules to pick the next step.
+    5. Persist the step result to SQLite.
+    6. Repeat until a step routes to None.
     """
 
     def __init__(
@@ -108,80 +101,19 @@ class PipelineOrchestrator:
         instructions_dir: Path,
         cwd: str = None
     ):
-        """Initialize the orchestrator.
-
-        Args:
-            tool_registry: Registry with custom tools
-            state_manager: SQLite state persistence
-            instructions_dir: Path to instruction markdown files
-            cwd: Working directory for file operations
-        """
         self.tool_registry = tool_registry
         self.state_manager = state_manager
         self.instructions_dir = instructions_dir
         self.cwd = cwd
         self.pipelines: Dict[str, PipelineConfig] = {}
-        self.log = get_logger('orchestrator')
-        self.context_log_path = Path("pipeline.context")
+        # Replaced with a per-pipeline logger in register_pipeline().
+        self.log = get_logger("relais")
 
     def register_pipeline(self, config: PipelineConfig) -> None:
         """Register a pipeline configuration."""
-        self.log.info(f"Registering pipeline '{config.name}' with {len(config.steps)} steps")
-        self.log.debug(f"Pipeline steps: {list(config.steps.keys())}")
+        self.log = get_logger(f"relais.{config.name}")
+        self.log.info("pipeline_registered", pipeline=config.name, steps=len(config.steps))
         self.pipelines[config.name] = config
-
-    def _get_or_create_agent(
-        self,
-        run_id: str,
-        step: PipelineStep,
-        config: PipelineConfig
-    ) -> PipelineAgent:
-        """Get or create an agent for a pipeline step.
-
-        Args:
-            run_id: UUID of the pipeline run
-            step: The current step
-            config: Pipeline configuration
-
-        Returns:
-            PipelineAgent instance for this step
-        """
-        # Get agent from step (required)
-        if step.agent is None:
-            raise ValueError(
-                f"Step '{step.name}' is missing required 'agent' parameter. "
-                f"Every step must have an explicit agent assigned."
-            )
-
-        agent_template = step.agent
-        agent_name = agent_template.name
-
-        # The config template is the source of truth for static configuration
-        # (tools, model, thinking, step limit). Always clone a fresh agent from
-        # it, then overlay any persisted *runtime* state (conversation history,
-        # steps consumed so far) from the database. This avoids the trap of
-        # reconstructing static config from the DB, which previously dropped the
-        # agent's tools on session resume.
-        agent = self._clone_agent(agent_template)
-
-        persisted = self.state_manager.load_agent(run_id, agent_name)
-        if persisted is not None:
-            agent.conversation_history = persisted.conversation_history
-            if persisted.steps_remaining is not None:
-                agent.steps_remaining = persisted.steps_remaining
-
-            if agent.is_expired():
-                self.log.info(f"Agent '{agent_name}' expired, recreating from template")
-                self.state_manager.delete_agent(run_id, agent_name)
-                agent = self._clone_agent(agent_template)
-
-        self.log.info(
-            f"Agent '{agent_name}' ready: steps={agent.steps}, "
-            f"steps_remaining={agent.steps_remaining}, max_turns={agent.max_turns}, "
-            f"tools={len(agent.tools)}"
-        )
-        self.state_manager.save_agent(run_id, agent)
-        return agent
 
     @staticmethod
     def _clone_agent(template: PipelineAgent) -> PipelineAgent:
@@ -189,7 +121,6 @@ class PipelineOrchestrator:
         return PipelineAgent(
             name=template.name,
             tools=list(template.tools),
-            steps=template.steps,
             max_turns=template.max_turns,
             model=template.model,
             thinking=template.thinking,
@@ -200,82 +131,35 @@ class PipelineOrchestrator:
         pipeline_name: str,
         initial_input: str,
         args: dict = None,
-        session: str = None
     ) -> str:
-        """Start a new pipeline run or continue an existing session.
-
-        Args:
-            pipeline_name: Name of registered pipeline
-            initial_input: Initial prompt/input
-            args: Pipeline arguments
-            session: Optional session name for debug mode. When provided:
-                - Checks for an existing active session with this name
-                - If found, resumes from where it left off
-                - If not found (or completed), starts a new run
-                - Pipeline pauses after each step completes
-
-        Returns:
-            Run ID (UUID)
-        """
-        return asyncio.run(self._start_pipeline_async(
-            pipeline_name, initial_input, args, session
-        ))
+        """Start and run a pipeline to completion. Returns the run ID."""
+        return asyncio.run(self._start_pipeline_async(pipeline_name, initial_input, args))
 
     async def _start_pipeline_async(
         self,
         pipeline_name: str,
         initial_input: str,
         args: dict = None,
-        session: str = None
     ) -> str:
-        """Async implementation of start_pipeline."""
         config = self.pipelines.get(pipeline_name)
         if not config:
             raise ValueError(f"Unknown pipeline: {pipeline_name}")
 
-        # Check for existing active session
-        existing_run = None
-        start_from_step = None
-        if session:
-            existing_run = self.state_manager.get_active_session(pipeline_name, session)
-            if existing_run:
-                self.log.info(f"Resuming session '{session}' from step '{existing_run.current_step}'")
-                run_id = existing_run.id
-                start_from_step = existing_run.current_step
-                args = existing_run.args  # Use stored args
-                initial_input = args.get('_initial_input', initial_input)  # Restore original input
-                # Mark as running again
-                self.state_manager.resume_pipeline(run_id)
-            else:
-                self.log.info(f"Starting new session '{session}' for pipeline '{pipeline_name}'")
-
-        if not existing_run:
-            self.log.info(f"Starting pipeline '{pipeline_name}'")
-            self.log.debug(f"Initial input: {initial_input[:200]}...")
-
-            # Store initial_input in args for session resume
-            run_args = dict(args) if args else {}
-            if session:
-                run_args['_initial_input'] = initial_input
-
-            run_id = self.state_manager.create_pipeline_run(
-                pipeline_name=pipeline_name,
-                start_step=config.start_step,
-                args=run_args,
-                session=session
-            )
-            args = run_args  # Use the args we stored
-            self.log.info(f"Created pipeline run: {run_id}")
+        run_args = dict(args) if args else {}
+        run_id = self.state_manager.create_pipeline_run(
+            pipeline_name=pipeline_name,
+            start_step=config.start_step,
+            args=run_args,
+        )
+        self.log.info(
+            "run_started", run=run_id, pipeline=pipeline_name,
+            start_step=config.start_step, input=initial_input[:200],
+        )
 
         try:
-            await self._execute_pipeline(
-                run_id, config, initial_input,
-                args=args,
-                start_from_step=start_from_step,
-                session=session
-            )
+            await self._execute_pipeline(run_id, config, initial_input, args=run_args)
         except Exception as e:
-            self.log.error(f"Pipeline execution failed: {e}")
+            self.log.error("run_failed", run=run_id, pipeline=pipeline_name, error=str(e))
             self.state_manager.complete_pipeline(run_id, status='failed')
             raise
 
@@ -287,55 +171,18 @@ class PipelineOrchestrator:
         config: PipelineConfig,
         initial_input: str,
         args: dict = None,
-        start_from_step: str = None,
-        session: str = None
     ) -> None:
-        """Execute the pipeline loop.
+        """Run the pipeline loop start-to-finish in one process.
 
-        Main session steps share a single ClaudeSDKClient to maintain conversation
-        context. Subagent steps get isolated client instances.
-
-        When session is provided, pipeline runs in debug mode:
-        - Executes one step at a time
-        - Pauses after each step completes
-        - Call run() again with same session to continue
+        Each agent is instantiated once (cloned from its config template) and
+        keeps its live client across every step it runs.
         """
-        current_step_name = start_from_step or config.start_step
+        current_step_name = config.start_step
         previous_result = None
         step_count = 0
-        accumulated_messages = []  # Accumulate messages across main session steps
-        run_agents: Dict[str, PipelineAgent] = {}  # Track agents within this run (preserves clients)
+        run_agents: Dict[str, PipelineAgent] = {}  # name -> live agent (preserves client)
 
-        # In session mode, load previous result and conversation history from stored state
-        if session and start_from_step:
-            run_state = self.state_manager.get_pipeline_run(run_id)
-            if run_state:
-                # Load accumulated conversation history
-                if run_state.conversation_history:
-                    accumulated_messages = run_state.conversation_history
-                    self.log.debug(f"Loaded {len(accumulated_messages)} messages from previous session")
-                # Get the last step's routing data as previous_result
-                if run_state.step_results:
-                    step_results = run_state.step_results
-                    if step_results:
-                        last_step = list(step_results.keys())[-1] if step_results else None
-                        if last_step and 'routing_data' in step_results[last_step]:
-                            previous_result = step_results[last_step]['routing_data']
-                            self.log.debug(f"Loaded previous result from step '{last_step}': {previous_result}")
-
-        # Clear/create context log file for this pipeline run
-        try:
-            with open(self.context_log_path, 'w', encoding='utf-8') as f:
-                f.write(f"Pipeline Context Log - Run ID: {run_id}\n")
-                f.write(f"Pipeline: {config.name}\n")
-                f.write(f"Started at: {datetime.now().isoformat()}\n")
-        except Exception as e:
-            self.log.warning(f"Failed to initialize context log: {e}")
-
-        # Create MCP server with registered tools
         mcp_server = self.tool_registry.create_mcp_server()
-
-        self.log.info(f"[{run_id}] Beginning pipeline execution from '{current_step_name}'")
 
         try:
             while current_step_name:
@@ -344,124 +191,68 @@ class PipelineOrchestrator:
                 if not step:
                     raise ValueError(f"Step not found: {current_step_name}")
 
-                self.log.info(f"[{run_id}] === Step {step_count}: '{current_step_name}' ===")
-
-                # Get the agent for this step - check run_agents first to preserve client
+                # One live agent per name for the whole run.
                 agent_name = step.agent.name
-                if agent_name in run_agents:
-                    agent = run_agents[agent_name]
-                    # Check if cached agent has expired - if so, create a fresh one
-                    if agent.is_expired():
-                        self.log.info(f"Agent '{agent_name}' expired, creating fresh instance")
-                        del run_agents[agent_name]
-                        agent = self._get_or_create_agent(run_id, step, config)
-                        run_agents[agent_name] = agent
-                    else:
-                        self.log.debug(f"Reusing agent '{agent_name}' from current run")
-                else:
-                    agent = self._get_or_create_agent(run_id, step, config)
+                agent = run_agents.get(agent_name)
+                if agent is None:
+                    agent = self._clone_agent(step.agent)
                     run_agents[agent_name] = agent
 
-                self.log.debug(f"[{run_id}] max_turns={agent.max_turns}, tools={step.tools}, agent={agent_name}")
-
-                # Build context prompt - always include initial_input so all steps can see original request
-                # In debug mode resume, inject previous conversation history
-                if session and agent.is_persistent():
-                    prev_msgs = accumulated_messages
-                elif session and agent.conversation_history:
-                    # For isolated agents with steps > 1, use their stored conversation history
-                    prev_msgs = agent.conversation_history
-                else:
-                    prev_msgs = None
-                    
                 context = await self._build_step_context(
                     step=step,
                     previous_result=previous_result,
                     initial_input=initial_input,
                     instructions_dir=Path(config.instructions_dir),
-                    config=config,
                     args=args,
-                    previous_messages=prev_msgs
                 )
 
-                # Log full context for debugging
-                agent_step_info = None
-                if agent.steps is not None:
-                    current_agent_step = agent.steps - agent.steps_remaining + 1
-                    agent_step_info = f"{current_agent_step}/{agent.steps}"
-                self._log_step_context(current_step_name, context, step_count, agent_name, agent_step_info)
+                self.log.info(
+                    "step_start", run=run_id, n=step_count, step=current_step_name,
+                    agent=agent_name, tools=_tool_names(step.tools),
+                    max_turns=agent.max_turns, model=agent.model or "opus",
+                )
+                self.log.debug("step_context", run=run_id, step=current_step_name, context=context)
 
-                # Execute step
-                self.log.info(f"[{run_id}] Running with agent '{agent_name}' (steps={agent.steps})")
                 result = await self._execute_step(
-                    step=step,
-                    context=context,
-                    mcp_server=mcp_server,
-                    run_id=run_id,
-                    config=config,
-                    agent=agent
+                    step=step, context=context, mcp_server=mcp_server, agent=agent,
                 )
 
-                self.log.info(f"[{run_id}] Step completed - turns={result.turns_used}, reason={result.stop_reason}")
-
-                # Accumulate messages for debug mode resume (persistent agents use accumulated_messages)
-                if agent.is_persistent() and result.messages:
-                    accumulated_messages.extend(result.messages)
-                    self.log.debug(f"Accumulated {len(result.messages)} messages, total now {len(accumulated_messages)}")
-
-                # Determine next step
                 routing_data = result.routing_data or {}
                 next_step_name = step.resolve_next(routing_data)
-                self.log.info(f"[{run_id}] Routing: '{current_step_name}' -> '{next_step_name or 'END'}'")
 
-                # Persist state
+                self.log.info(
+                    "step_done", run=run_id, step=current_step_name, agent=agent_name,
+                    turns=result.turns_used, stop=result.stop_reason,
+                    next=next_step_name or "END", routing_data=routing_data,
+                )
+
                 self.state_manager.update_pipeline_step(
                     run_id=run_id,
                     current_step=next_step_name or current_step_name,
-                    conversation_history=accumulated_messages,  # Persist for debug mode resume
                     step_result={
                         'step': current_step_name,
                         'turns_used': result.turns_used,
                         'stop_reason': result.stop_reason,
                         'routing_data': routing_data,
-                        'final_response': result.final_response
-                    }
+                        'final_response': result.final_response,
+                    },
                 )
-
-                # Session mode: pause after each step
-                if session and next_step_name:
-                    self.log.info(f"[{run_id}] Session mode: pausing after '{current_step_name}', next step is '{next_step_name}'")
-                    self.state_manager.pause_pipeline(run_id)
-                    print(f"\n{'='*60}")
-                    print(f"SESSION '{session}' PAUSED")
-                    print(f"  Completed: {current_step_name}")
-                    print(f"  Next step: {next_step_name}")
-                    print(f"  Run again with session='{session}' to continue")
-                    print(f"{'='*60}\n")
-                    return  # Exit without completing - will resume later
 
                 previous_result = routing_data
                 current_step_name = next_step_name
 
-            self.log.info(f"[{run_id}] Pipeline completed after {step_count} steps")
             self.state_manager.complete_pipeline(run_id)
-            if session:
-                print(f"\n{'='*60}")
-                print(f"SESSION '{session}' COMPLETED")
-                print(f"  Total steps: {step_count}")
-                print(f"{'='*60}\n")
+            self.log.info("run_completed", run=run_id, pipeline=config.name, steps=step_count)
         finally:
-            # Disconnect clients in LIFO order. Each ClaudeSDKClient enters an
+            # Disconnect clients newest-first. Each ClaudeSDKClient enters an
             # anyio task scope on connect(); anyio requires those scopes to be
-            # exited in reverse order of entry, so we disconnect newest-first.
-            # Teardown errors are logged, not raised, so a transient disconnect
-            # problem never fails an otherwise-successful run.
+            # exited in reverse order. Teardown errors are logged, not raised.
             for agent in reversed(list(run_agents.values())):
                 if agent.has_client():
                     try:
                         await agent.disconnect()
                     except Exception as e:
-                        self.log.warning(f"Error disconnecting agent '{agent.name}': {e}")
+                        self.log.warning("disconnect_error", agent=agent.name, error=str(e))
                     finally:
                         agent.client = None
 
@@ -470,150 +261,64 @@ class PipelineOrchestrator:
         step: PipelineStep,
         context: str,
         mcp_server,
-        run_id: str,
-        config: PipelineConfig,
-        agent: PipelineAgent
+        agent: PipelineAgent,
     ) -> StepExecutionResult:
-        """Execute a pipeline step with the given agent.
-
-        Handles both persistent (steps=None) and limited (steps=N) agents:
-        - Creates/reuses client stored on agent.client
-        - Processes response and captures messages to agent.conversation_history
-        - Manages agent lifecycle (consume_step, expiration) for non-persistent agents
-        - Persists agent state to database
-        """
+        """Run one step on its agent's live client and capture routing data."""
         # Per-step tool scoping. This is the HARD constraint: the MCP wrapper
         # consults is_tool_allowed() on every call and refuses any tool not in
-        # step.tools, regardless of what the SDK's allowed_tools list contains.
+        # step.tools, regardless of the SDK's own allowed_tools list.
         self.tool_registry.set_current_step(step.name, step.tools or [])
 
-        # Build client options from agent settings.
         model = agent.model or "opus"
         thinking = agent.thinking or False
-        # allowed_tools is the SDK's own (advisory, per-client) filter. For a
-        # persistent agent the client is created once and can't be re-scoped per
-        # step, so we pass the agent's full tool set and rely on the wrapper's
-        # per-step check above for the real boundary. For step-limited agents the
-        # client is short-lived, so we can scope it tightly to step.tools too.
-        if agent.is_persistent():
-            allowed_tools = self.tool_registry.get_allowed_tools(agent.tools)
-        elif step.tools:
-            allowed_tools = self.tool_registry.get_allowed_tools(step.tools)
-        else:
-            allowed_tools = self.tool_registry.get_allowed_tools(agent.tools)
 
-        # Check if agent already has a client - reuse it across steps
         reusing_client = agent.has_client()
-
-        agent_instance_id = None
-
-        if reusing_client:
-            self.log.info(f"Continuing agent '{agent.name}' for '{step.name}' (steps_remaining={agent.steps_remaining})")
+        if not reusing_client:
+            # allowed_tools is the SDK's per-client filter, set once at connect().
+            # Use the agent's full tool set; per-step scoping is enforced by the
+            # wrapper above.
+            allowed_tools = self.tool_registry.get_allowed_tools(agent.tools)
+            options_kwargs = {
+                "max_turns": agent.max_turns,
+                "model": model,
+                "mcp_servers": {self.tool_registry.name: mcp_server},
+                "allowed_tools": allowed_tools,
+                "permission_mode": "acceptEdits",
+                "cwd": self.cwd,
+            }
+            if thinking:
+                options_kwargs["max_thinking_tokens"] = 60000
+            client = ClaudeSDKClient(options=ClaudeAgentOptions(**options_kwargs))
+            await client.connect()
+            agent.set_client(client)
         else:
-            agent_instance_id = str(uuid.uuid4())
-            self.log.info(f"Starting agent '{agent.name}' ({agent_instance_id}) for '{step.name}'")
+            client = agent.client
 
-            # Log to database
-            self.state_manager.log_subagent_spawn(
-                parent_pipeline_id=run_id,
-                subagent_id=agent_instance_id,
-                step_name=step.name
-            )
+        await client.query(context)
 
-        options_kwargs = {
-            "max_turns": agent.max_turns,
-            "model": model,
-            "mcp_servers": {self.tool_registry.name: mcp_server},
-            "allowed_tools": allowed_tools,
-            "permission_mode": "acceptEdits",
-            "cwd": config.cwd or self.cwd,
-        }
-        if thinking:
-            options_kwargs["max_thinking_tokens"] = 60000
-
-        options = ClaudeAgentOptions(**options_kwargs)
-
-        self.log.info(f"Step options: max_turns={agent.max_turns}, model={model}, allowed_tools={allowed_tools}")
-
-        # Initialize tracking
         tool_results = []
         final_response = ""
         turns_used = 0
         is_error = False
-        captured_messages = []
 
-        # Record the user query
-        captured_messages.append({"role": "user", "content": context})
-
-        # Get or create client
-        if reusing_client:
-            client = agent.client
-            await client.query(context)
-        else:
-            client = ClaudeSDKClient(options=options)
-            await client.connect()
-            agent.set_client(client)
-            await client.query(context)
-
-        try:
-            async for message in client.receive_response():
-                if isinstance(message, AssistantMessage):
-                    msg_content = []  # For captured_messages (debug mode conversation history)
-                    for block in message.content:
-                        if isinstance(block, TextBlock):
-                            final_response = block.text  # For logging
-                            msg_content.append({"type": "text", "text": block.text})
-                            if config.verbose:
-                                print(f"\n[{step.name}] {block.text}")
-                        elif isinstance(block, ToolUseBlock):
-                            self.log.info(f"Tool call: {block.name} (id={block.id})")
-                            msg_content.append({"type": "tool_use", "tool": block.name, "input": block.input})
-                            if config.verbose:
-                                print(f"\n[{step.name}] Tool: {block.name}")
-                                print(f"  Input: {block.input}")
-                            tool_call = {
-                                "id": block.id,
-                                "tool": block.name,
-                                "input": block.input
-                            }
-                            tool_results.append(tool_call)  # For logging
-                    if msg_content:
-                        captured_messages.append({"role": "assistant", "content": msg_content})
-
-                elif isinstance(message, ResultMessage):
-                    turns_used = message.num_turns  # For logging
-                    is_error = message.is_error
-                    self.log.info(f"Result: turns={turns_used}, error={is_error}")
-                    if config.verbose and message.usage:
-                        u = message.usage
-                        input_tokens = u.get('input_tokens', 0) + u.get('cache_creation_input_tokens', 0) + u.get('cache_read_input_tokens', 0)
-                        output_tokens = u.get('output_tokens', 0)
-                        cache_read = u.get('cache_read_input_tokens', 0)
-                        print(f"\n[{step.name}] Tokens: {input_tokens:,} in ({cache_read:,} cached) / {output_tokens:,} out")
-
-        finally:
-            # Add captured messages to agent's conversation history
-            agent.add_messages(captured_messages)
-
-            # Handle lifecycle for non-persistent agents
-            if not agent.is_persistent():
-                agent.consume_step()
-                self.log.debug(f"Agent '{agent.name}' consumed step, remaining={agent.steps_remaining}")
-
-                if agent.is_expired():
-                    self.log.info(f"Agent '{agent.name}' expired, disconnecting client")
-                    await agent.disconnect()
-                    agent.client = None
-                    self.state_manager.delete_agent(run_id, agent.name)
-                else:
-                    self.state_manager.save_agent(run_id, agent)
-            else:
-                # Persistent agents still save state (for debug mode resume)
-                self.state_manager.save_agent(run_id, agent)
+        async for message in client.receive_response():
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        final_response = block.text
+                        if self._verbose:
+                            print(f"\n[{step.name}] {block.text}")
+                    elif isinstance(block, ToolUseBlock):
+                        self.log.debug("tool_call", step=step.name, tool=block.name, input=block.input)
+                        tool_results.append({"id": block.id, "tool": block.name, "input": block.input})
+                        if self._verbose:
+                            print(f"\n[{step.name}] Tool: {block.name}  {block.input}")
+            elif isinstance(message, ResultMessage):
+                turns_used = message.num_turns
+                is_error = message.is_error
 
         # Routing data is the output of the step's declared response tool.
-        # response_tool is required on every step (PipelineStep enforces this),
-        # so its absence here is a hard failure rather than a fallback.
+        # response_tool is required on every step, so absence is a hard failure.
         captured = self.tool_registry.get_tool_result(step.response_tool)
         if not captured:
             raise ResponseToolNotCalled(
@@ -626,29 +331,20 @@ class PipelineOrchestrator:
         else:
             routing_data = raw_result
 
-        result = StepExecutionResult(
+        return StepExecutionResult(
             step_name=step.name,
             final_response=final_response,
             tool_results=tool_results,
             turns_used=turns_used,
             stop_reason='error' if is_error else 'success',
             routing_data=routing_data,
-            messages=captured_messages
         )
 
-        # Log completion if we started a new agent instance
-        if agent_instance_id:
-            self.state_manager.log_subagent_complete(
-                subagent_id=agent_instance_id,
-                result={
-                    'final_response': final_response,
-                    'tool_results': tool_results,
-                    'routing_data': result.routing_data
-                },
-                turns_used=turns_used
-            )
-
-        return result
+    @property
+    def _verbose(self) -> bool:
+        # Resolved per-call from the active pipeline; cheap and avoids threading
+        # config through _execute_step.
+        return any(c.verbose for c in self.pipelines.values())
 
     async def _build_step_context(
         self,
@@ -656,65 +352,40 @@ class PipelineOrchestrator:
         previous_result: dict,
         initial_input: str,
         instructions_dir: Path,
-        config: PipelineConfig,
         args: dict = None,
-        previous_messages: List[dict] = None
     ) -> str:
         """Build the context prompt for a step."""
         sections = []
 
-        # Inject previous conversation history (for debug mode resume)
-        if previous_messages:
-            conversation_text = self._format_conversation_history(previous_messages)
-            if conversation_text:
-                sections.append(f"[Previous Conversation]\n{conversation_text}")
-
         if initial_input:
             sections.append(f"[User Input]\n{initial_input}")
 
-        # Surface caller-supplied pipeline args to every step. Drop the internal
-        # session-resume key, which is bookkeeping rather than user data.
         if args:
-            visible_args = {k: v for k, v in args.items() if k != "_initial_input"}
-            if visible_args:
-                sections.append(f"[Pipeline Args]\n{json.dumps(visible_args, indent=2)}")
+            sections.append(f"[Pipeline Args]\n{json.dumps(args, indent=2)}")
 
         if previous_result:
             sections.append(f"[Previous Step Output]\n{json.dumps(previous_result, indent=2)}")
 
         sections.append(f"[Current Step]\n{step.name}")
 
-        # Execute hooks
         hook_data = await step.get_hook_data()
         if hook_data:
-            self.log.debug(f"Hook data: {len(hook_data)} items")
             sections.append(f"[Hook Data]\n{json.dumps(hook_data, indent=2)}")
 
-        # Load instruction
         instruction_path = instructions_dir / f"{step.instruction}.md"
         if instruction_path.exists():
-            instruction = instruction_path.read_text()
-            sections.append(f"[Instructions]\n{instruction}")
+            sections.append(f"[Instructions]\n{instruction_path.read_text()}")
         else:
-            self.log.warning(f"Instruction not found: {instruction_path}")
+            self.log.warning("instruction_missing", step=step.name, path=str(instruction_path))
 
-        # Add available tools section (soft constraint - tells agent what tools to use)
-        if step.tools:
-            tool_names = []
-            for t in step.tools:
-                if callable(t) and hasattr(t, '_tool_name'):
-                    tool_names.append(t._tool_name)
-                elif isinstance(t, str):
-                    tool_names.append(t)
-            if tool_names:
-                tools_text = ", ".join(tool_names)
-                sections.append(
-                    f"[Available Tools]\n"
-                    f"For this step, you should use: {tools_text}\n"
-                    f"Other tools are not available for this step and will be blocked if called."
-                )
+        tool_names = _tool_names(step.tools)
+        if tool_names:
+            sections.append(
+                f"[Available Tools]\n"
+                f"For this step, you should use: {', '.join(tool_names)}\n"
+                f"Other tools are not available for this step and will be blocked if called."
+            )
 
-        # Inject response tool requirement
         if step.response_tool:
             sections.append(
                 f"[Response Tool]\n"
@@ -724,13 +395,11 @@ class PipelineOrchestrator:
                 f"visible — only the output of '{step.response_tool}' is used."
             )
 
-        # Always end with pipeline step instruction
         sections.append(PIPELINE_STEP_INSTRUCTION)
-
         return "\n\n".join(sections)
 
     def _extract_from_mcp_content(self, content_list: list) -> Optional[dict]:
-        """Extract routing data from MCP content format."""
+        """Extract routing data from MCP content format (the first text block)."""
         for item in content_list:
             if isinstance(item, dict) and item.get("type") == "text":
                 try:
@@ -739,62 +408,13 @@ class PipelineOrchestrator:
                     return {"response": item.get("text")}
         return None
 
-    def _format_conversation_history(self, messages: List[dict]) -> str:
-        """Format captured messages as readable conversation history.
 
-        Args:
-            messages: List of captured messages with role and content
-
-        Returns:
-            Formatted conversation text
-        """
-        if not messages:
-            return ""
-
-        lines = []
-        for msg in messages:
-            role = msg.get("role", "unknown")
-            content = msg.get("content", "")
-
-            if role == "user":
-                # User messages are context strings - pass through without truncation
-                # Caller (pipeline) can handle truncation if needed
-                if isinstance(content, str):
-                    lines.append(f"[User Query]\n{content}")
-            elif role == "assistant":
-                # Assistant messages have structured content
-                if isinstance(content, list):
-                    for block in content:
-                        if isinstance(block, dict):
-                            if block.get("type") == "text":
-                                lines.append(f"[Assistant]\n{block.get('text', '')}")
-                            elif block.get("type") == "tool_use":
-                                tool = block.get("tool", "unknown")
-                                inp = block.get("input", {})
-                                lines.append(f"[Tool Call: {tool}]\n{json.dumps(inp, indent=2)}")
-                elif isinstance(content, str):
-                    lines.append(f"[Assistant]\n{content}")
-
-        return "\n\n".join(lines)
-
-    def _log_step_context(self, step_name: str, context: str, step_num: int, agent_name: str, agent_step: str = None) -> None:
-        """Log the full context being sent to a step for debugging.
-
-        Args:
-            step_name: Name of the step
-            context: The full context string
-            step_num: The step number in the pipeline
-            agent_name: Name of the agent executing this step
-            agent_step: Agent step info like "2/3" for limited agents
-        """
-        try:
-            with open(self.context_log_path, 'a', encoding='utf-8') as f:
-                separator = "=" * 80
-                f.write(f"\n{separator}\n")
-                agent_info = f"{agent_name} {agent_step}" if agent_step else agent_name
-                f.write(f"STEP {step_num}: {step_name} ({agent_info})\n")
-                f.write(f"{separator}\n\n")
-                f.write(context)
-                f.write(f"\n\n{separator}\n\n")
-        except Exception as e:
-            self.log.warning(f"Failed to write context log: {e}")
+def _tool_names(tools) -> List[str]:
+    """Normalize a tools list (strings or @tool functions) to names."""
+    names = []
+    for t in tools or []:
+        if callable(t) and hasattr(t, '_tool_name'):
+            names.append(t._tool_name)
+        elif isinstance(t, str):
+            names.append(t)
+    return names

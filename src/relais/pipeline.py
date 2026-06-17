@@ -114,7 +114,7 @@ class Pipeline:
         Returns:
             Configured Pipeline instance
         """
-        log.info(f"Creating pipeline '{name}' with {len(steps)} steps")
+        log.info("pipeline_create", pipeline=name, steps=len(steps))
 
         # Collect unique agents from all steps
         agents = {}
@@ -126,7 +126,7 @@ class Pipeline:
                 )
             agents[step.agent.name] = step.agent
 
-        log.debug(f"Collected {len(agents)} agents: {list(agents.keys())}")
+        log.debug("agents_collected", pipeline=name, agents=list(agents.keys()))
 
         # Initialize components
         tool_registry = ToolRegistry(f"{name}_tools")
@@ -177,7 +177,7 @@ class Pipeline:
         )
         orchestrator.register_pipeline(config)
 
-        log.info(f"Pipeline '{name}' created successfully")
+        log.info("pipeline_created", pipeline=name)
 
         return cls(
             name=name,
@@ -227,37 +227,18 @@ class Pipeline:
         self,
         initial_input: str,
         args: dict = None,
-        session: str = None
     ) -> str:
-        """Run the pipeline.
+        """Run the pipeline start-to-finish and return the run's UUID.
 
         Args:
             initial_input: Initial user input/prompt
-            args: Pipeline arguments
-            session: Optional session name for debug mode. When provided:
-                - If an active session exists with this name, resumes from where it left off
-                - If no active session exists, starts fresh
-                - Pipeline pauses after each step, allowing inspection before continuing
-                - Run again with the same session name to continue
-
-        Returns:
-            UUID of the pipeline run
+            args: Pipeline arguments, surfaced to every step as [Pipeline Args]
         """
         return self.orchestrator.start_pipeline(
             pipeline_name=self.name,
             initial_input=initial_input,
             args=args,
-            session=session
         )
-
-    def resume(self, run_id: str, user_input: str = None) -> None:
-        """Resume a paused pipeline.
-
-        Args:
-            run_id: UUID of the run to resume
-            user_input: Optional new user input
-        """
-        self.orchestrator.resume_pipeline(run_id, user_input)
 
     def get_run(self, run_id: str):
         """Get the state of a pipeline run.
@@ -278,7 +259,7 @@ class Pipeline:
         """List pipeline runs.
 
         Args:
-            status: Filter by status (running, completed, failed, paused)
+            status: Filter by status (running, completed, failed)
             limit: Maximum results
 
         Returns:

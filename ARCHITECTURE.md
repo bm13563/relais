@@ -13,8 +13,8 @@ PipelineOrchestrator._execute_pipeline()
     │       ▼
     │   _build_step_context()
     │       │
-    │       ├── [Previous Conversation] ← debug mode only, from accumulated_messages
     │       ├── [User Input]            ← initial_input (passed to every step)
+    │       ├── [Pipeline Args]         ← args (passed to every step)
     │       ├── [Previous Step Output]  ← routing_data from previous step's tool call
     │       ├── [Current Step]          ← step.name
     │       ├── [Hook Data]             ← step.get_hook_data()
@@ -84,18 +84,14 @@ _build_step_context() for Step B
 ```
 PipelineAgent
     │
-    ├── steps=None (persistent)
-    │       │
-    │       └── Agent lives for entire pipeline
-    │           Client reused across all steps
-    │           Conversation history maintained in SDK
-    │
-    └── steps=N (limited)
-            │
-            └── Agent expires after N steps
-                New client created when expired
-                Conversation history injected as context
+    └── Connects one live ClaudeSDKClient on first run
+        Reuses it for every step it runs in the pipeline
+        Conversation context lives in that client (RAM)
+        Disconnected (newest-first) when the run ends
 ```
+
+A run executes start-to-finish in one process. There is no pause/resume; two
+different agents have two different clients and therefore isolated context.
 
 ## Key Files
 
@@ -103,14 +99,15 @@ PipelineAgent
 |------|---------|
 | pipeline.py | High-level API: Pipeline.create(), Pipeline.run() |
 | executor.py | Core execution: _execute_pipeline(), _execute_step() |
-| tools.py | MCP tool registration, result capture |
+| tools.py | MCP tool registration, per-step gating, result capture |
 | step.py | PipelineStep definition, routing logic |
-| agent.py | PipelineAgent lifecycle |
-| state.py | SQLite persistence for pipeline runs and agent state |
+| agent.py | PipelineAgent definition + live client |
+| state.py | SQLite persistence for pipeline runs |
+| logging_config.py | spool logging (per-pipeline JSONL streams) |
 
 ## Data Flow Summary
 
 1. **User Input** → passed to every step unchanged
 2. **Tool Result** → captured by MCP wrapper → becomes [Previous Step Output] for next step
-3. **Conversation History** → only used in debug mode for resume
-4. **Step Results** → persisted to SQLite for debugging/auditing
+3. **Step Results** → persisted to SQLite for inspection (get_run / list_runs)
+4. **Step Events** → logged to spool as structured JSONL for tracing/debugging
