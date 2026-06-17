@@ -20,7 +20,11 @@ class PipelineAgent:
                or @tool decorated functions. These are registered with the SDK client.
         steps: Number of steps this agent is available for. None means persistent
                across all steps. Integer N means available for N steps then expires.
-        max_turns: Maximum API round-trips per step before stopping (default: 10)
+        max_turns: Hard ceiling on model round-trips per step (default: 10). One
+               turn is one model response; a tool call consumes the next turn to
+               feed the result back. A step that calls a tool, reads the result,
+               then calls its response tool uses ~3 turns. Set lower to keep a
+               step on a tight leash; raise it for agents that iterate.
         model: Model override for this agent (opus, sonnet, haiku)
         thinking: Enable/disable extended thinking for this agent (None inherits)
         conversation_history: Message history for this agent
@@ -31,7 +35,7 @@ class PipelineAgent:
     name: str
     tools: List[Union[str, Callable]] = field(default_factory=list)
     steps: Optional[int] = None
-    max_turns: int = 2
+    max_turns: int = 10
     model: Optional[str] = "opus"
     thinking: Optional[bool] = False
     conversation_history: List[Dict[str, Any]] = field(default_factory=list)

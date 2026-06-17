@@ -15,11 +15,24 @@ class TestPipelineAgentCreation:
 
         assert agent.name == "main_agent"
         assert agent.steps is None  # Persistent across all steps
+        assert agent.max_turns == 10  # Default turn budget
         assert agent.model == "opus"  # Default model
         assert agent.thinking is False  # Default thinking
         assert agent.conversation_history == []
         assert agent.steps_remaining is None
         assert agent.client is None
+
+    def test_max_turns_default_is_consistent(self):
+        """The max_turns default must agree across the constructor and from_dict.
+
+        These drifted apart once (field said 2, docstring + from_dict said 10),
+        which silently starved multi-tool steps. Pin them together.
+        """
+        DEFAULT_MAX_TURNS = 10
+        assert PipelineAgent(name="a").max_turns == DEFAULT_MAX_TURNS
+        # from_dict with no max_turns key must fall back to the same default
+        restored = PipelineAgent.from_dict({"name": "a"})
+        assert restored.max_turns == DEFAULT_MAX_TURNS
 
     def test_agent_with_limited_steps(self):
         """Test creating agent with step limit."""

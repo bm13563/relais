@@ -353,7 +353,7 @@ PipelineAgent(
     name: str,                          # Unique agent identifier
     tools: List[Union[str, Callable]] = [],  # Tools this agent may use
     steps: int = None,                  # None = persists across all steps; N = expires after N
-    max_turns: int = 2,                 # Max API round-trips per step
+    max_turns: int = 10,                # Max API round-trips per step (one model
     model: str = "opus",                # Model (opus, sonnet, haiku)
     thinking: bool = False,             # Enable extended thinking
 )
