@@ -184,9 +184,8 @@ def populated_tool_registry(tool_registry):
 def mock_state_manager(tmp_path):
     """Mock state manager for unit tests.
 
-    `db_path` is a real string so that collaborators which derive paths from it
-    (e.g. the orchestrator's AgentStateManager) do not write mock-named
-    directories into the working tree.
+    `db_path` is a real string for the rare collaborator that reads it; the
+    orchestrator no longer derives any secondary path from it.
     """
     manager = MagicMock(spec=SQLiteStateManager)
     manager.db_path = str(tmp_path / "mock_pipeline.db")

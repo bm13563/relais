@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
+from .agent import PipelineAgent
+
 
 @dataclass
 class PipelineRunState:
@@ -83,6 +85,21 @@ class SQLiteStateManager:
     );
 
     CREATE INDEX IF NOT EXISTS idx_parent ON subagent_logs(parent_pipeline_id);
+
+    CREATE TABLE IF NOT EXISTS pipeline_agents (
+        run_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        steps INTEGER,
+        steps_remaining INTEGER,
+        model TEXT,
+        thinking INTEGER,
+        conversation_history TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (run_id, name)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agents_run_id ON pipeline_agents(run_id);
     '''
 
     def __init__(self, db_path: str):
@@ -463,8 +480,81 @@ class SQLiteStateManager:
                 (run_id,)
             )
             conn.execute(
+                "DELETE FROM pipeline_agents WHERE run_id = ?",
+                (run_id,)
+            )
+            conn.execute(
                 "DELETE FROM pipeline_runs WHERE id = ?",
                 (run_id,)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    # ------------------------------------------------------------------
+    # Agent state
+    #
+    # Agents persist their runtime state (conversation history, steps consumed)
+    # so a run can be resumed in session mode. Static config (tools, model, turn
+    # budget) is re-derived from the pipeline definition, not stored here.
+    # ------------------------------------------------------------------
+
+    def save_agent(self, run_id: str, agent: PipelineAgent) -> None:
+        """Save or update an agent's runtime state for a run."""
+        thinking_int = None if agent.thinking is None else (1 if agent.thinking else 0)
+        conn = self._get_connection()
+        try:
+            conn.execute("""
+                INSERT OR REPLACE INTO pipeline_agents
+                (run_id, name, steps, steps_remaining, model, thinking, conversation_history, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (
+                run_id,
+                agent.name,
+                agent.steps,
+                agent.steps_remaining,
+                agent.model,
+                thinking_int,
+                json.dumps(agent.conversation_history),
+            ))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def load_agent(self, run_id: str, agent_name: str) -> Optional[PipelineAgent]:
+        """Load an agent's persisted runtime state, or None if not stored."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.execute(
+                "SELECT * FROM pipeline_agents WHERE run_id = ? AND name = ?",
+                (run_id, agent_name)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            thinking = None if row['thinking'] is None else bool(row['thinking'])
+            agent = PipelineAgent(
+                name=row['name'],
+                steps=row['steps'],
+                model=row['model'],
+                thinking=thinking,
+            )
+            agent.steps_remaining = row['steps_remaining']
+            agent.conversation_history = (
+                json.loads(row['conversation_history']) if row['conversation_history'] else []
+            )
+            return agent
+        finally:
+            conn.close()
+
+    def delete_agent(self, run_id: str, agent_name: str) -> None:
+        """Delete an agent's persisted state for a run."""
+        conn = self._get_connection()
+        try:
+            conn.execute(
+                "DELETE FROM pipeline_agents WHERE run_id = ? AND name = ?",
+                (run_id, agent_name)
             )
             conn.commit()
         finally:

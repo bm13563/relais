@@ -1,32 +1,26 @@
-"""Unit tests for agent_state.py - AgentStateManager class."""
+"""Unit tests for agent persistence on SQLiteStateManager.
 
-import pytest
+Agent runtime state (conversation history, steps consumed) is stored in the main
+pipeline database alongside run state, via save_agent / load_agent / delete_agent.
+"""
+
 import tempfile
 from pathlib import Path
 
 from relais.agent import PipelineAgent
-from relais.agent_state import AgentStateManager
+from relais.state import SQLiteStateManager
 
 
-class TestAgentStateManagerCreation:
-    """Tests for AgentStateManager instantiation."""
+def _manager(tmpdir):
+    manager = SQLiteStateManager.create(str(Path(tmpdir) / "pipeline.db"))
+    manager.initialize_schema()
+    return manager
 
-    def test_create_with_db_path(self):
-        """Test creating state manager with database path."""
+
+class TestAgentSchema:
+    def test_schema_creates_pipeline_agents_table(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "agents.db"
-            manager = AgentStateManager.create(str(db_path))
-
-            assert manager.db_path == str(db_path)
-
-    def test_create_initializes_schema(self):
-        """Test that create initializes database schema."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "agents.db"
-            manager = AgentStateManager.create(str(db_path))
-            manager.initialize_schema()
-
-            # Verify tables exist by querying
+            manager = _manager(tmpdir)
             conn = manager._get_connection()
             cursor = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='pipeline_agents'"
@@ -36,56 +30,33 @@ class TestAgentStateManagerCreation:
 
 
 class TestSaveAndLoadAgent:
-    """Tests for saving and loading agents."""
-
     def test_save_agent_creates_record(self):
-        """Test that save_agent creates a database record."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "agents.db"
-            manager = AgentStateManager.create(str(db_path))
-            manager.initialize_schema()
-
+            manager = _manager(tmpdir)
             agent = PipelineAgent(name="test_agent", steps=5, model="opus")
             manager.save_agent("run-123", agent)
 
-            # Verify record exists
             loaded = manager.load_agent("run-123", "test_agent")
             assert loaded is not None
             assert loaded.name == "test_agent"
 
     def test_load_nonexistent_agent_returns_none(self):
-        """Test that loading nonexistent agent returns None."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "agents.db"
-            manager = AgentStateManager.create(str(db_path))
-            manager.initialize_schema()
-
-            result = manager.load_agent("run-123", "nonexistent")
-
-            assert result is None
+            manager = _manager(tmpdir)
+            assert manager.load_agent("run-123", "nonexistent") is None
 
     def test_save_and_load_agent_preserves_state(self):
-        """Test that save/load preserves agent state."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "agents.db"
-            manager = AgentStateManager.create(str(db_path))
-            manager.initialize_schema()
-
-            agent = PipelineAgent(
-                name="full_agent",
-                steps=10,
-                model="opus",
-                thinking=False
-            )
+            manager = _manager(tmpdir)
+            agent = PipelineAgent(name="full_agent", steps=10, model="opus", thinking=False)
             agent.add_messages([
                 {"role": "user", "content": "Question"},
-                {"role": "assistant", "content": "Answer"}
+                {"role": "assistant", "content": "Answer"},
             ])
             agent.consume_step()
             agent.consume_step()
 
             manager.save_agent("run-456", agent)
-
             loaded = manager.load_agent("run-456", "full_agent")
 
             assert loaded.name == agent.name
@@ -96,54 +67,49 @@ class TestSaveAndLoadAgent:
             assert loaded.conversation_history == agent.conversation_history
 
     def test_save_updates_existing_agent(self):
-        """Test that saving again updates existing record."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "agents.db"
-            manager = AgentStateManager.create(str(db_path))
-            manager.initialize_schema()
-
+            manager = _manager(tmpdir)
             agent = PipelineAgent(name="updatable", steps=5)
             manager.save_agent("run-789", agent)
 
-            # Modify and save again
             agent.consume_step()
             agent.add_message({"role": "user", "content": "New message"})
             manager.save_agent("run-789", agent)
 
             loaded = manager.load_agent("run-789", "updatable")
-
             assert loaded.steps_remaining == 4
             assert len(loaded.conversation_history) == 1
 
+    def test_agents_are_scoped_per_run(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = _manager(tmpdir)
+            manager.save_agent("run-A", PipelineAgent(name="shared", steps=3))
+            manager.save_agent("run-B", PipelineAgent(name="shared", steps=7))
+
+            assert manager.load_agent("run-A", "shared").steps == 3
+            assert manager.load_agent("run-B", "shared").steps == 7
+
 
 class TestDeleteAgent:
-    """Tests for deleting agents."""
-
     def test_delete_agent_removes_record(self):
-        """Test that delete_agent removes the record."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "agents.db"
-            manager = AgentStateManager.create(str(db_path))
-            manager.initialize_schema()
-
-            agent = PipelineAgent(name="deletable")
-            manager.save_agent("run-111", agent)
-
-            # Verify it exists
+            manager = _manager(tmpdir)
+            manager.save_agent("run-111", PipelineAgent(name="deletable"))
             assert manager.load_agent("run-111", "deletable") is not None
 
-            # Delete it
             manager.delete_agent("run-111", "deletable")
-
-            # Verify it's gone
             assert manager.load_agent("run-111", "deletable") is None
 
     def test_delete_nonexistent_agent_no_error(self):
-        """Test that deleting nonexistent agent doesn't error."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "agents.db"
-            manager = AgentStateManager.create(str(db_path))
-            manager.initialize_schema()
+            manager = _manager(tmpdir)
+            manager.delete_agent("run-999", "nonexistent")  # should not raise
 
-            # Should not raise
-            manager.delete_agent("run-999", "nonexistent")
+    def test_delete_pipeline_run_also_deletes_its_agents(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = _manager(tmpdir)
+            run_id = manager.create_pipeline_run("p", "start")
+            manager.save_agent(run_id, PipelineAgent(name="a1"))
+
+            manager.delete_pipeline_run(run_id)
+            assert manager.load_agent(run_id, "a1") is None

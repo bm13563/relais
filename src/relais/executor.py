@@ -9,7 +9,6 @@ Note: query() does NOT support custom tools - only ClaudeSDKClient does.
 from __future__ import annotations
 import asyncio
 import json
-import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -29,7 +28,6 @@ from .step import PipelineStep
 from .tools import ToolRegistry
 from .state import SQLiteStateManager
 from .agent import PipelineAgent
-from .agent_state import AgentStateManager
 from .logging_config import get_logger
 
 log = get_logger('executor')
@@ -126,23 +124,6 @@ class PipelineOrchestrator:
         self.log = get_logger('orchestrator')
         self.context_log_path = Path("pipeline.context")
 
-        # Create agent state manager beside the main DB (.agents.db suffix).
-        # Guard against a non-string db_path (e.g. a test double). The state
-        # managers open a fresh connection per call, so a shared on-disk path is
-        # required; an isolated temp file is used when no real path is available
-        # (keeps construction from writing stray mock-named dirs into the cwd).
-        db_path = getattr(state_manager, "db_path", None)
-        if isinstance(db_path, str) and db_path.endswith(".db"):
-            agent_db_path = db_path[:-len(".db")] + ".agents.db"
-        elif isinstance(db_path, str) and db_path:
-            agent_db_path = db_path + ".agents.db"
-        else:
-            import tempfile
-            fd, agent_db_path = tempfile.mkstemp(suffix=".agents.db")
-            os.close(fd)
-        self.agent_state_manager = AgentStateManager.create(agent_db_path)
-        self.agent_state_manager.initialize_schema()
-
     def register_pipeline(self, config: PipelineConfig) -> None:
         """Register a pipeline configuration."""
         self.log.info(f"Registering pipeline '{config.name}' with {len(config.steps)} steps")
@@ -183,7 +164,7 @@ class PipelineOrchestrator:
         # agent's tools on session resume.
         agent = self._clone_agent(agent_template)
 
-        persisted = self.agent_state_manager.load_agent(run_id, agent_name)
+        persisted = self.state_manager.load_agent(run_id, agent_name)
         if persisted is not None:
             agent.conversation_history = persisted.conversation_history
             if persisted.steps_remaining is not None:
@@ -191,7 +172,7 @@ class PipelineOrchestrator:
 
             if agent.is_expired():
                 self.log.info(f"Agent '{agent_name}' expired, recreating from template")
-                self.agent_state_manager.delete_agent(run_id, agent_name)
+                self.state_manager.delete_agent(run_id, agent_name)
                 agent = self._clone_agent(agent_template)
 
         self.log.info(
@@ -199,7 +180,7 @@ class PipelineOrchestrator:
             f"steps_remaining={agent.steps_remaining}, max_turns={agent.max_turns}, "
             f"tools={len(agent.tools)}"
         )
-        self.agent_state_manager.save_agent(run_id, agent)
+        self.state_manager.save_agent(run_id, agent)
         return agent
 
     @staticmethod
@@ -623,12 +604,12 @@ class PipelineOrchestrator:
                     self.log.info(f"Agent '{agent.name}' expired, disconnecting client")
                     await agent.disconnect()
                     agent.client = None
-                    self.agent_state_manager.delete_agent(run_id, agent.name)
+                    self.state_manager.delete_agent(run_id, agent.name)
                 else:
-                    self.agent_state_manager.save_agent(run_id, agent)
+                    self.state_manager.save_agent(run_id, agent)
             else:
                 # Persistent agents still save state (for debug mode resume)
-                self.agent_state_manager.save_agent(run_id, agent)
+                self.state_manager.save_agent(run_id, agent)
 
         # Routing data is the output of the step's declared response tool.
         # response_tool is required on every step (PipelineStep enforces this),

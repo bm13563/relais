@@ -24,7 +24,6 @@ from .pipeline import Pipeline, cleanup_all_pipeline_states
 from .utils import read_markdown
 from .logging_config import setup_logging, get_logger
 from .agent import PipelineAgent
-from .agent_state import AgentStateManager
 
 __all__ = [
     # High-level API
@@ -39,7 +38,6 @@ __all__ = [
 
     # Agents
     "PipelineAgent",
-    "AgentStateManager",
 
     # Tools
     "Annotated",
