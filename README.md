@@ -293,9 +293,7 @@ relais/
 │   ├── agent.py         # PipelineAgent definition + lifecycle
 │   ├── executor.py      # Pipeline execution engine
 │   ├── tools.py         # Tool registry, @tool decorator, per-step gating
-│   ├── state.py         # SQLite pipeline-run persistence
-│   ├── agent_state.py   # SQLite agent-state persistence
-│   ├── router.py        # Command routing
+│   ├── state.py         # SQLite persistence (pipeline runs + agent state)
 │   ├── logging_config.py # Logging setup
 │   └── utils.py         # Utilities
 ├── examples/

@@ -106,8 +106,7 @@ PipelineAgent
 | tools.py | MCP tool registration, result capture |
 | step.py | PipelineStep definition, routing logic |
 | agent.py | PipelineAgent lifecycle |
-| state.py | SQLite persistence for pipeline runs |
-| agent_state.py | SQLite persistence for agent state |
+| state.py | SQLite persistence for pipeline runs and agent state |
 
 ## Data Flow Summary
 
