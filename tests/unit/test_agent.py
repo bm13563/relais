@@ -14,6 +14,8 @@ class TestPipelineAgentCreation:
 
         assert agent.name == "main_agent"
         assert agent.tools == []
+        assert agent.steps is None  # Persistent by default
+        assert agent.steps_remaining is None
         assert agent.max_turns == 10  # Default turn budget
         assert agent.model == "opus"
         assert agent.thinking is False
@@ -27,15 +29,48 @@ class TestPipelineAgentCreation:
         agent = PipelineAgent(
             name="custom_agent",
             tools=["t1", "t2"],
+            steps=3,
             max_turns=5,
             model="sonnet",
             thinking=True,
         )
         assert agent.name == "custom_agent"
         assert agent.tools == ["t1", "t2"]
+        assert agent.steps == 3
+        assert agent.steps_remaining == 3
         assert agent.max_turns == 5
         assert agent.model == "sonnet"
         assert agent.thinking is True
+
+
+class TestStepBudget:
+    """Tests for the step budget (steps / steps_remaining / expiry)."""
+
+    def test_persistent_agent_never_expires(self):
+        agent = PipelineAgent(name="p")  # steps=None
+        assert not agent.is_expired()
+        agent.consume_step()  # no-op
+        assert agent.steps_remaining is None
+        assert not agent.is_expired()
+
+    def test_budgeted_agent_expires_after_n_steps(self):
+        agent = PipelineAgent(name="w", steps=2)
+        assert agent.steps_remaining == 2
+        assert not agent.is_expired()
+
+        agent.consume_step()
+        assert agent.steps_remaining == 1
+        assert not agent.is_expired()
+
+        agent.consume_step()
+        assert agent.steps_remaining == 0
+        assert agent.is_expired()
+
+    def test_steps_one_expires_after_single_step(self):
+        agent = PipelineAgent(name="solo", steps=1)
+        assert not agent.is_expired()
+        agent.consume_step()
+        assert agent.is_expired()
 
 
 class TestClientManagement:

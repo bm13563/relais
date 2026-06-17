@@ -784,6 +784,74 @@ class TestExecutePipelineLoop:
             assert executed_steps == ["router", "handle_b"]
 
     @pytest.mark.asyncio
+    async def test_step_budget_resets_agent_on_loop_back(self, test_instructions_dir):
+        """A steps=N agent expires after N steps; looping back to it spins up a
+        fresh instance with a new client (clean context)."""
+        mock_registry = MagicMock()
+        mock_registry.create_mcp_server.return_value = MagicMock()
+        mock_registry.get_allowed_tools.return_value = []
+        mock_registry.name = "test"
+        mock_state = MagicMock()
+
+        orchestrator = PipelineOrchestrator(
+            tool_registry=mock_registry,
+            state_manager=mock_state,
+            instructions_dir=test_instructions_dir,
+        )
+
+        # One worker agent with a 2-step budget drives both A and B.
+        worker = PipelineAgent(name="worker", steps=2)
+        steps = {
+            # A -> B always; B loops back to A once, then ends.
+            "A": PipelineStep(name="A", instruction="test_step", response_tool="test_tool",
+                              next={"default": "B"}, agent=worker),
+            "B": PipelineStep(name="B", instruction="test_step", response_tool="test_tool",
+                              next={"field": "again",
+                                    "routes": [{"equals": True, "goto": "A"}],
+                                    "default": None},
+                              agent=worker),
+        }
+        config = PipelineConfig(name="loop", steps=steps, start_step="A",
+                                instructions_dir=str(test_instructions_dir))
+
+        # B asks to loop back the first time, then ends.
+        b_calls = {"n": 0}
+        seen_instances = []  # the agent instance object passed to each step
+
+        async def mock_execute(step, context, mcp_server, agent):
+            seen_instances.append(agent)
+            # Give the live instance a fake client so we can see disconnects.
+            if not agent.has_client():
+                agent.set_client(AsyncMock())
+            again = False
+            if step.name == "B":
+                b_calls["n"] += 1
+                again = b_calls["n"] == 1  # loop back only on the first B
+            return StepExecutionResult(
+                step_name=step.name, final_response="", tool_results=[],
+                turns_used=1, stop_reason="success", routing_data={"again": again},
+            )
+
+        with patch.object(orchestrator, '_execute_step', side_effect=mock_execute):
+            await orchestrator._execute_pipeline(
+                run_id="run-loop", config=config, initial_input="go", args={},
+            )
+
+        # Path was A, B, A, B (one retry) — four step executions.
+        assert len(seen_instances) == 4
+
+        # First two steps share one instance; after 2 steps it expires, so the
+        # loop-back to A uses a DIFFERENT (fresh) instance for steps 3 and 4.
+        first_instance = seen_instances[0]
+        second_instance = seen_instances[2]
+        assert seen_instances[1] is first_instance
+        assert seen_instances[3] is second_instance
+        assert second_instance is not first_instance
+        # The expired first instance had its client disconnected and cleared.
+        assert first_instance.client is None
+        assert first_instance.is_expired()
+
+    @pytest.mark.asyncio
     async def test_step_not_found_raises(self, test_instructions_dir):
         """Test that missing step raises error."""
         mock_registry = MagicMock()

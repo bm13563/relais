@@ -21,10 +21,12 @@ was granted and does exactly one thing before handing off. It enables you to:
 
 ### Core model
 
-- **Agent** — owns a model, a `max_turns` budget, and a tool set. It connects one
-  live SDK client when it first runs and keeps it for the whole pipeline run, so
-  its conversation context lives in RAM. Two different agents have two different
-  clients and therefore isolated context.
+- **Agent** — owns a model, a `max_turns` budget, a `steps` budget, and a tool set.
+  A live instance connects one SDK client on first run and keeps it across the
+  steps it participates in, so its conversation context lives in RAM. With
+  `steps=N` the instance expires after N steps and the next route to that agent
+  starts a fresh instance with clean context; `steps=None` (default) persists for
+  the whole run. Two different agents always have isolated context.
 - **Step** — names an instruction file, the tools available *for that step*, the
   `response_tool` whose output is captured, the agent that runs it, and routing rules.
 - **response_tool** — every step must declare one. Only that tool's output is captured,
@@ -156,8 +158,31 @@ steps = {
 }
 ```
 
-Give two steps the **same** agent instance and the agent persists across them,
-keeping its conversation history live in its SDK client for the whole run.
+Give two steps the **same** agent and it persists across them, keeping its
+conversation live in its SDK client.
+
+**Step budget (`steps=N`).** When you want an agent to carry context across a
+bounded unit of work and then start clean, give it a step budget:
+
+```python
+# A worker that runs draft -> review as one attempt, then resets on retry.
+worker = PipelineAgent(name="worker", tools=[...], steps=2)
+
+steps = {
+    "draft":  PipelineStep(name="draft", ..., agent=worker, next={"default": "review"}),
+    "review": PipelineStep(
+        name="review", ..., agent=worker,
+        next={"field": "ok",
+              "routes": [{"equals": False, "goto": "draft"}],  # retry: loop back
+              "default": None},
+    ),
+}
+```
+
+The instance spends its 2-step budget on `draft`→`review`. If `review` loops back
+to `draft`, the expired instance is retired and a **fresh** worker (clean context)
+takes the retry. Size `N` to a loop body to reset on each loop-back; use a large
+`N` (or `None`) for a refinement loop that should *remember* prior attempts.
 
 ### Logging & debugging (spool)
 
@@ -335,6 +360,7 @@ PipelineStep(
 PipelineAgent(
     name: str,                          # Unique agent identifier
     tools: List[Union[str, Callable]] = [],  # Tools this agent may use
+    steps: int = None,                  # None = persists all run; N = expire after N steps
     max_turns: int = 10,                # Max model round-trips per step
     model: str = "opus",                # Model (opus, sonnet, haiku)
     thinking: bool = False,             # Enable extended thinking

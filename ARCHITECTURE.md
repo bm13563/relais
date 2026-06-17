@@ -82,12 +82,18 @@ _build_step_context() for Step B
 ## Agent Lifecycle
 
 ```
-PipelineAgent
+PipelineAgent (live instance)
     │
-    └── Connects one live ClaudeSDKClient on first run
-        Reuses it for every step it runs in the pipeline
-        Conversation context lives in that client (RAM)
-        Disconnected (newest-first) when the run ends
+    ├── Connects one ClaudeSDKClient on first run
+    │   Reuses it across the steps this instance participates in
+    │   Conversation context lives in that client (RAM)
+    │
+    ├── steps=None → persists for the whole run
+    │
+    └── steps=N    → consume_step() after each step
+                     is_expired() at 0 → disconnect client now;
+                     next route to this agent clones a fresh
+                     instance with clean context (resets on loop-back)
 ```
 
 A run executes start-to-finish in one process. There is no pause/resume; two

@@ -117,10 +117,14 @@ class PipelineOrchestrator:
 
     @staticmethod
     def _clone_agent(template: PipelineAgent) -> PipelineAgent:
-        """Create a fresh runtime agent from a config template."""
+        """Create a fresh runtime instance from a config template.
+
+        Resets the step budget (steps_remaining) via __post_init__.
+        """
         return PipelineAgent(
             name=template.name,
             tools=list(template.tools),
+            steps=template.steps,
             max_turns=template.max_turns,
             model=template.model,
             thinking=template.thinking,
@@ -191,9 +195,15 @@ class PipelineOrchestrator:
                 if not step:
                     raise ValueError(f"Step not found: {current_step_name}")
 
-                # One live agent per name for the whole run.
+                # Reuse the live instance for this agent name; if a step-budgeted
+                # instance has expired, retire it and spin up a fresh one with
+                # clean context (this is how looping back to an agent resets it).
                 agent_name = step.agent.name
                 agent = run_agents.get(agent_name)
+                if agent is not None and agent.is_expired():
+                    if agent.has_client():
+                        await self._safe_disconnect(agent)
+                    agent = None
                 if agent is None:
                     agent = self._clone_agent(step.agent)
                     run_agents[agent_name] = agent
@@ -238,23 +248,35 @@ class PipelineOrchestrator:
                     },
                 )
 
+                # Spend one step of the agent's budget. If it's now expired,
+                # disconnect its client promptly; it stays in run_agents so a
+                # re-entry spins up a fresh instance (see the fetch block above).
+                agent.consume_step()
+                if agent.is_expired() and agent.has_client():
+                    self.log.debug("agent_expired", run=run_id, agent=agent_name)
+                    await self._safe_disconnect(agent)
+
                 previous_result = routing_data
                 current_step_name = next_step_name
 
             self.state_manager.complete_pipeline(run_id)
             self.log.info("run_completed", run=run_id, pipeline=config.name, steps=step_count)
         finally:
-            # Disconnect clients newest-first. Each ClaudeSDKClient enters an
-            # anyio task scope on connect(); anyio requires those scopes to be
-            # exited in reverse order. Teardown errors are logged, not raised.
+            # Disconnect any remaining live clients newest-first. Each
+            # ClaudeSDKClient enters an anyio task scope on connect(); anyio
+            # requires those scopes to be exited in reverse order.
             for agent in reversed(list(run_agents.values())):
                 if agent.has_client():
-                    try:
-                        await agent.disconnect()
-                    except Exception as e:
-                        self.log.warning("disconnect_error", agent=agent.name, error=str(e))
-                    finally:
-                        agent.client = None
+                    await self._safe_disconnect(agent)
+
+    async def _safe_disconnect(self, agent: PipelineAgent) -> None:
+        """Disconnect an agent's client, logging (not raising) on error."""
+        try:
+            await agent.disconnect()
+        except Exception as e:
+            self.log.warning("disconnect_error", agent=agent.name, error=str(e))
+        finally:
+            agent.client = None
 
     async def _execute_step(
         self,
