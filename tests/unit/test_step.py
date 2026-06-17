@@ -17,32 +17,40 @@ class TestPipelineStepCreation:
         )
         assert step.name == "minimal"
         assert step.instruction == "test"
-        assert step.max_turns == 10  # default
+        assert step.response_tool == "test_tool"
         assert step.tools == []  # default
         assert step.hooks == []  # default
-        assert step.agent is None  # default
+        assert step.agent is None  # default (validated at pipeline-create time)
         assert step.next == {"default": None}  # default - ends pipeline
 
     def test_fully_configured_step(self):
         """Test creating step with all fields specified."""
+        from relais.agent import PipelineAgent
+
         hooks = [lambda: {"data": "value"}]
+        agent = PipelineAgent(name="custom_agent", tools=["tool1"], max_turns=15)
         step = PipelineStep(
             name="full",
             instruction="full_instruction",
             response_tool="test_tool",
             next={"default": "next_step"},
-            max_turns=15,
             tools=["tool1", "tool2", "tool3"],
             hooks=hooks,
-            agent="custom_agent"
+            agent=agent,
         )
         assert step.name == "full"
         assert step.instruction == "full_instruction"
         assert step.next == {"default": "next_step"}
-        assert step.max_turns == 15
         assert step.tools == ["tool1", "tool2", "tool3"]
         assert step.hooks == hooks
-        assert step.agent == "custom_agent"
+        assert step.agent is agent
+        # max_turns lives on the agent, not the step
+        assert step.agent.max_turns == 15
+
+    def test_step_requires_response_tool(self):
+        """Every step must declare a response_tool."""
+        with pytest.raises(ValueError, match="response_tool"):
+            PipelineStep(name="bad", instruction="test")
 
     def test_step_with_conditional_routing(self):
         """Test step with conditional routing configuration."""
@@ -298,19 +306,19 @@ class TestGetInstruction:
 
 
 class TestGetHookData:
-    """Tests for PipelineStep.get_hook_data method."""
+    """Tests for PipelineStep.get_hook_data method (async; supports sync+async hooks)."""
 
-    def test_get_hook_data_no_hooks(self):
+    async def test_get_hook_data_no_hooks(self):
         """Test getting hook data when no hooks defined."""
         step = PipelineStep(
             name="no_hooks",
             instruction="test",
             response_tool="test_tool"
         )
-        result = step.get_hook_data()
+        result = await step.get_hook_data()
         assert result == []
 
-    def test_get_hook_data_single_hook(self):
+    async def test_get_hook_data_single_hook(self):
         """Test getting data from single hook."""
         def my_hook():
             return {"key": "value"}
@@ -321,10 +329,10 @@ class TestGetHookData:
             response_tool="test_tool",
             hooks=[my_hook]
         )
-        result = step.get_hook_data()
+        result = await step.get_hook_data()
         assert result == [{"key": "value"}]
 
-    def test_get_hook_data_multiple_hooks(self):
+    async def test_get_hook_data_multiple_hooks(self):
         """Test getting data from multiple hooks."""
         def hook1():
             return {"a": 1}
@@ -341,10 +349,27 @@ class TestGetHookData:
             response_tool="test_tool",
             hooks=[hook1, hook2, hook3]
         )
-        result = step.get_hook_data()
+        result = await step.get_hook_data()
         assert result == [{"a": 1}, {"b": 2}, {"c": 3}]
 
-    def test_get_hook_data_different_return_types(self):
+    async def test_get_hook_data_async_hook(self):
+        """Test that async hooks are awaited."""
+        async def async_hook():
+            return {"async": True}
+
+        def sync_hook():
+            return {"sync": True}
+
+        step = PipelineStep(
+            name="mixed",
+            instruction="test",
+            response_tool="test_tool",
+            hooks=[async_hook, sync_hook],
+        )
+        result = await step.get_hook_data()
+        assert result == [{"async": True}, {"sync": True}]
+
+    async def test_get_hook_data_different_return_types(self):
         """Test hooks returning different data types."""
         def string_hook():
             return "just a string"
@@ -361,12 +386,12 @@ class TestGetHookData:
             response_tool="test_tool",
             hooks=[string_hook, list_hook, dict_hook]
         )
-        result = step.get_hook_data()
+        result = await step.get_hook_data()
         assert result[0] == "just a string"
         assert result[1] == [1, 2, 3]
         assert result[2] == {"nested": {"data": True}}
 
-    def test_get_hook_data_hook_returns_none(self):
+    async def test_get_hook_data_hook_returns_none(self):
         """Test hook that returns None."""
         def none_hook():
             return None
@@ -377,10 +402,10 @@ class TestGetHookData:
             response_tool="test_tool",
             hooks=[none_hook]
         )
-        result = step.get_hook_data()
+        result = await step.get_hook_data()
         assert result == [None]
 
-    def test_get_hook_data_hook_with_side_effects(self):
+    async def test_get_hook_data_hook_with_side_effects(self):
         """Test that hooks are actually executed."""
         call_count = {"count": 0}
 
@@ -396,14 +421,14 @@ class TestGetHookData:
         )
 
         # First call
-        result1 = step.get_hook_data()
+        result1 = await step.get_hook_data()
         assert result1 == [1]
 
         # Second call
-        result2 = step.get_hook_data()
+        result2 = await step.get_hook_data()
         assert result2 == [2]
 
-    def test_get_hook_data_execution_order(self):
+    async def test_get_hook_data_execution_order(self):
         """Test that hooks execute in order."""
         results = []
 
@@ -425,7 +450,7 @@ class TestGetHookData:
             response_tool="test_tool",
             hooks=[hook_a, hook_b, hook_c]
         )
-        step.get_hook_data()
+        await step.get_hook_data()
         assert results == ["a", "b", "c"]
 
 
@@ -438,14 +463,12 @@ class TestStepEquality:
             name="test",
             instruction="test_instruction",
             response_tool="test_tool",
-            max_turns=5,
             tools=["tool1"]
         )
         step2 = PipelineStep(
             name="test",
             instruction="test_instruction",
             response_tool="test_tool",
-            max_turns=5,
             tools=["tool1"]
         )
         assert step1 == step2

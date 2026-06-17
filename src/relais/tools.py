@@ -573,16 +573,6 @@ class ToolRegistry:
         """Get the registry/server name."""
         return self._name
 
-    def get_last_tool_result(self) -> Optional[tuple]:
-        """Get the last tool result.
-
-        Returns:
-            Tuple of (tool_name, result) or None if no results captured.
-        """
-        if not self._tool_results:
-            return None
-        return self._tool_results[-1]
-
     def get_tool_result(self, tool_name: str) -> Optional[tuple]:
         """Get the result of a specific tool by name.
 

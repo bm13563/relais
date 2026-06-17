@@ -92,8 +92,9 @@ class SQLiteStateManager:
             db_path: Path to SQLite database file
         """
         self.db_path = db_path
-        # Ensure parent directory exists
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        # Ensure parent directory exists (skip for in-memory databases)
+        if db_path != ":memory:":
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
     def _get_connection(self) -> sqlite3.Connection:
         """Get a database connection with row factory."""

@@ -9,6 +9,7 @@ Note: query() does NOT support custom tools - only ClaudeSDKClient does.
 from __future__ import annotations
 import asyncio
 import json
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -125,8 +126,20 @@ class PipelineOrchestrator:
         self.log = get_logger('orchestrator')
         self.context_log_path = Path("pipeline.context")
 
-        # Create agent state manager (use same db path as state_manager with .agents suffix)
-        agent_db_path = state_manager.db_path.replace('.db', '.agents.db')
+        # Create agent state manager beside the main DB (.agents.db suffix).
+        # Guard against a non-string db_path (e.g. a test double). The state
+        # managers open a fresh connection per call, so a shared on-disk path is
+        # required; an isolated temp file is used when no real path is available
+        # (keeps construction from writing stray mock-named dirs into the cwd).
+        db_path = getattr(state_manager, "db_path", None)
+        if isinstance(db_path, str) and db_path.endswith(".db"):
+            agent_db_path = db_path[:-len(".db")] + ".agents.db"
+        elif isinstance(db_path, str) and db_path:
+            agent_db_path = db_path + ".agents.db"
+        else:
+            import tempfile
+            fd, agent_db_path = tempfile.mkstemp(suffix=".agents.db")
+            os.close(fd)
         self.agent_state_manager = AgentStateManager.create(agent_db_path)
         self.agent_state_manager.initialize_schema()
 
@@ -162,31 +175,44 @@ class PipelineOrchestrator:
         agent_template = step.agent
         agent_name = agent_template.name
 
-        # Try to load existing agent state from database
-        agent = self.agent_state_manager.load_agent(run_id, agent_name)
+        # The config template is the source of truth for static configuration
+        # (tools, model, thinking, step limit). Always clone a fresh agent from
+        # it, then overlay any persisted *runtime* state (conversation history,
+        # steps consumed so far) from the database. This avoids the trap of
+        # reconstructing static config from the DB, which previously dropped the
+        # agent's tools on session resume.
+        agent = self._clone_agent(agent_template)
 
-        # If agent exists and is expired, clear it and create new one
-        if agent and agent.is_expired():
-            self.log.info(f"Agent '{agent_name}' expired, creating new instance")
-            self.agent_state_manager.delete_agent(run_id, agent_name)
-            agent = None
+        persisted = self.agent_state_manager.load_agent(run_id, agent_name)
+        if persisted is not None:
+            agent.conversation_history = persisted.conversation_history
+            if persisted.steps_remaining is not None:
+                agent.steps_remaining = persisted.steps_remaining
 
-        # If no agent state exists, clone from template
-        if not agent:
-            agent = PipelineAgent(
-                name=agent_template.name,
-                tools=agent_template.tools,  # Copy tools from template
-                steps=agent_template.steps,
-                max_turns=agent_template.max_turns,
-                model=agent_template.model,
-                thinking=agent_template.thinking,
-            )
-            self.log.info(f"Created agent '{agent_name}' from template: steps={agent.steps}, max_turns={agent.max_turns}, tools={len(agent.tools)}")
+            if agent.is_expired():
+                self.log.info(f"Agent '{agent_name}' expired, recreating from template")
+                self.agent_state_manager.delete_agent(run_id, agent_name)
+                agent = self._clone_agent(agent_template)
 
-            # Save new agent
-            self.agent_state_manager.save_agent(run_id, agent)
-
+        self.log.info(
+            f"Agent '{agent_name}' ready: steps={agent.steps}, "
+            f"steps_remaining={agent.steps_remaining}, max_turns={agent.max_turns}, "
+            f"tools={len(agent.tools)}"
+        )
+        self.agent_state_manager.save_agent(run_id, agent)
         return agent
+
+    @staticmethod
+    def _clone_agent(template: PipelineAgent) -> PipelineAgent:
+        """Create a fresh runtime agent from a config template."""
+        return PipelineAgent(
+            name=template.name,
+            tools=list(template.tools),
+            steps=template.steps,
+            max_turns=template.max_turns,
+            model=template.model,
+            thinking=template.thinking,
+        )
 
     def start_pipeline(
         self,
@@ -263,6 +289,7 @@ class PipelineOrchestrator:
         try:
             await self._execute_pipeline(
                 run_id, config, initial_input,
+                args=args,
                 start_from_step=start_from_step,
                 session=session
             )
@@ -278,6 +305,7 @@ class PipelineOrchestrator:
         run_id: str,
         config: PipelineConfig,
         initial_input: str,
+        args: dict = None,
         start_from_step: str = None,
         session: str = None
     ) -> None:
@@ -371,6 +399,7 @@ class PipelineOrchestrator:
                     initial_input=initial_input,
                     instructions_dir=Path(config.instructions_dir),
                     config=config,
+                    args=args,
                     previous_messages=prev_msgs
                 )
 
@@ -463,16 +492,19 @@ class PipelineOrchestrator:
         - Manages agent lifecycle (consume_step, expiration) for non-persistent agents
         - Persists agent state to database
         """
-        # Set current step for tool validation (soft constraint - MCP blocks unauthorized tools)
+        # Per-step tool scoping. This is the HARD constraint: the MCP wrapper
+        # consults is_tool_allowed() on every call and refuses any tool not in
+        # step.tools, regardless of what the SDK's allowed_tools list contains.
         self.tool_registry.set_current_step(step.name, step.tools or [])
 
-        # Build client options from agent settings
+        # Build client options from agent settings.
         model = agent.model or "opus"
         thinking = agent.thinking or False
-        # For persistent agents, --allowedTools is set once at CLI startup and
-        # can't change between steps, so use agent.tools (the full set).
-        # Per-step scoping is enforced by the MCP wrapper's is_tool_allowed().
-        # For non-persistent agents, use step.tools for per-step scoping.
+        # allowed_tools is the SDK's own (advisory, per-client) filter. For a
+        # persistent agent the client is created once and can't be re-scoped per
+        # step, so we pass the agent's full tool set and rely on the wrapper's
+        # per-step check above for the real boundary. For step-limited agents the
+        # client is short-lived, so we can scope it tightly to step.tools too.
         if agent.is_persistent():
             allowed_tools = self.tool_registry.get_allowed_tools(agent.tools)
         elif step.tools:
@@ -589,21 +621,20 @@ class PipelineOrchestrator:
                 # Persistent agents still save state (for debug mode resume)
                 self.agent_state_manager.save_agent(run_id, agent)
 
-        # Get routing data from response tool
-        if step.response_tool:
-            captured = self.tool_registry.get_tool_result(step.response_tool)
-            if not captured:
-                raise ResponseToolNotCalled(
-                    f"Step '{step.name}' requires response tool '{step.response_tool}' "
-                    f"but it was not called by the agent."
-                )
-            _, raw_result = captured
-            if isinstance(raw_result, dict) and "content" in raw_result:
-                routing_data = self._extract_from_mcp_content(raw_result["content"])
-            else:
-                routing_data = raw_result
+        # Routing data is the output of the step's declared response tool.
+        # response_tool is required on every step (PipelineStep enforces this),
+        # so its absence here is a hard failure rather than a fallback.
+        captured = self.tool_registry.get_tool_result(step.response_tool)
+        if not captured:
+            raise ResponseToolNotCalled(
+                f"Step '{step.name}' requires response tool '{step.response_tool}' "
+                f"but it was not called by the agent."
+            )
+        _, raw_result = captured
+        if isinstance(raw_result, dict) and "content" in raw_result:
+            routing_data = self._extract_from_mcp_content(raw_result["content"])
         else:
-            routing_data = self._get_routing_data_from_registry()
+            routing_data = raw_result
 
         result = StepExecutionResult(
             step_name=step.name,
@@ -636,6 +667,7 @@ class PipelineOrchestrator:
         initial_input: str,
         instructions_dir: Path,
         config: PipelineConfig,
+        args: dict = None,
         previous_messages: List[dict] = None
     ) -> str:
         """Build the context prompt for a step."""
@@ -649,6 +681,13 @@ class PipelineOrchestrator:
 
         if initial_input:
             sections.append(f"[User Input]\n{initial_input}")
+
+        # Surface caller-supplied pipeline args to every step. Drop the internal
+        # session-resume key, which is bookkeeping rather than user data.
+        if args:
+            visible_args = {k: v for k, v in args.items() if k != "_initial_input"}
+            if visible_args:
+                sections.append(f"[Pipeline Args]\n{json.dumps(visible_args, indent=2)}")
 
         if previous_result:
             sections.append(f"[Previous Step Output]\n{json.dumps(previous_result, indent=2)}")
@@ -699,23 +738,6 @@ class PipelineOrchestrator:
         sections.append(PIPELINE_STEP_INSTRUCTION)
 
         return "\n\n".join(sections)
-
-    def _get_routing_data_from_registry(self) -> Optional[dict]:
-        """Get routing data from MCP tool capture.
-
-        This is the preferred method - the MCP wrapper captures tool output directly.
-        """
-        captured = self.tool_registry.get_last_tool_result()
-        if not captured or not isinstance(captured, tuple) or len(captured) != 2:
-            return None
-
-        tool_name, result = captured
-        self.log.debug(f"Got routing data from registry for {tool_name}: {str(result)[:200]}")
-
-        # Handle MCP wrapper format {"content": [...]}
-        if isinstance(result, dict) and "content" in result:
-            return self._extract_from_mcp_content(result["content"])
-        return result
 
     def _extract_from_mcp_content(self, content_list: list) -> Optional[dict]:
         """Extract routing data from MCP content format."""

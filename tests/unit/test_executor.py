@@ -160,7 +160,7 @@ class TestRegisterPipeline:
 class TestBuildStepContext:
     """Tests for _build_step_context method."""
 
-    def test_build_context_basic(self, test_instructions_dir):
+    async def test_build_context_basic(self, test_instructions_dir):
         """Test building basic context."""
         orchestrator = PipelineOrchestrator(
             tool_registry=MagicMock(),
@@ -175,7 +175,7 @@ class TestBuildStepContext:
             start_step="test",
             instructions_dir=str(test_instructions_dir)
         )
-        context = orchestrator._build_step_context(
+        context = await orchestrator._build_step_context(
             step=step,
             args={},
             previous_result=None,
@@ -190,7 +190,7 @@ class TestBuildStepContext:
         assert "test" in context
         assert "[Instructions]" in context
 
-    def test_build_context_with_args(self, test_instructions_dir):
+    async def test_build_context_with_args(self, test_instructions_dir):
         """Test context includes args."""
         orchestrator = PipelineOrchestrator(
             tool_registry=MagicMock(),
@@ -205,7 +205,7 @@ class TestBuildStepContext:
             start_step="test",
             instructions_dir=str(test_instructions_dir)
         )
-        context = orchestrator._build_step_context(
+        context = await orchestrator._build_step_context(
             step=step,
             args={"key": "value", "num": 42},
             previous_result=None,
@@ -218,7 +218,30 @@ class TestBuildStepContext:
         assert "key" in context
         assert "value" in context
 
-    def test_build_context_with_previous_result(self, test_instructions_dir):
+    async def test_build_context_hides_internal_initial_input_arg(self, test_instructions_dir):
+        """The session-resume bookkeeping key must not leak into context."""
+        orchestrator = PipelineOrchestrator(
+            tool_registry=MagicMock(),
+            state_manager=MagicMock(),
+            instructions_dir=test_instructions_dir,
+        )
+        step = PipelineStep(name="test", instruction="test_step", response_tool="test_tool", agent=test_agent)
+        config = PipelineConfig(
+            name="test_pipeline", steps={"test": step}, start_step="test",
+            instructions_dir=str(test_instructions_dir),
+        )
+        context = await orchestrator._build_step_context(
+            step=step,
+            args={"_initial_input": "secret bookkeeping"},
+            previous_result=None,
+            initial_input=None,
+            instructions_dir=test_instructions_dir,
+            config=config,
+        )
+        assert "[Pipeline Args]" not in context
+        assert "secret bookkeeping" not in context
+
+    async def test_build_context_with_previous_result(self, test_instructions_dir):
         """Test context includes previous result."""
         orchestrator = PipelineOrchestrator(
             tool_registry=MagicMock(),
@@ -233,7 +256,7 @@ class TestBuildStepContext:
             start_step="test",
             instructions_dir=str(test_instructions_dir)
         )
-        context = orchestrator._build_step_context(
+        context = await orchestrator._build_step_context(
             step=step,
             args={},
             previous_result={"output": "previous data"},
@@ -245,7 +268,7 @@ class TestBuildStepContext:
         assert "[Previous Step Output]" in context
         assert "previous data" in context
 
-    def test_build_context_with_hooks(self, test_instructions_dir):
+    async def test_build_context_with_hooks(self, test_instructions_dir):
         """Test context includes hook data."""
         orchestrator = PipelineOrchestrator(
             tool_registry=MagicMock(),
@@ -269,7 +292,7 @@ class TestBuildStepContext:
             start_step="test",
             instructions_dir=str(test_instructions_dir)
         )
-        context = orchestrator._build_step_context(
+        context = await orchestrator._build_step_context(
             step=step,
             args={},
             previous_result=None,
@@ -282,7 +305,7 @@ class TestBuildStepContext:
         assert "timestamp" in context
         assert "2024-01-15" in context
 
-    def test_build_context_missing_instruction(self, test_instructions_dir):
+    async def test_build_context_missing_instruction(self, test_instructions_dir):
         """Test handling missing instruction file."""
         orchestrator = PipelineOrchestrator(
             tool_registry=MagicMock(),
@@ -298,7 +321,7 @@ class TestBuildStepContext:
             instructions_dir=str(test_instructions_dir)
         )
         # Should not raise, just log warning
-        context = orchestrator._build_step_context(
+        context = await orchestrator._build_step_context(
             step=step,
             args={},
             previous_result=None,
@@ -312,241 +335,79 @@ class TestBuildStepContext:
         assert "[Current Step]" in context
 
 
-class TestExtractRoutingData:
-    """Tests for _extract_routing_data method."""
+class TestExtractFromMcpContent:
+    """Tests for _extract_from_mcp_content, which parses a tool's MCP content list.
 
-    def test_extract_from_empty_results(self):
-        """Test extracting from empty tool results."""
-        orchestrator = PipelineOrchestrator(
+    Routing data is the output of the step's declared response_tool, captured by
+    the ToolRegistry wrapper in MCP content format:
+        {"content": [{"type": "text", "text": "<json or plain text>"}]}
+    """
+
+    def _orchestrator(self):
+        return PipelineOrchestrator(
             tool_registry=MagicMock(),
             state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
+            instructions_dir=Path("/instructions"),
         )
 
-        result = orchestrator._extract_routing_data([])
-        assert result is None
+    def test_extract_from_empty_content(self):
+        assert self._orchestrator()._extract_from_mcp_content([]) is None
 
-    def test_extract_from_json_string_output(self):
-        """Test extracting from JSON string output."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
-
-        tool_results = [
-            {"tool": "classify", "output": '{"category": "question", "confidence": 0.9}'}
-        ]
-        result = orchestrator._extract_routing_data(tool_results)
-
+    def test_extract_json_object(self):
+        content = [{"type": "text", "text": '{"category": "question", "confidence": 0.9}'}]
+        result = self._orchestrator()._extract_from_mcp_content(content)
         assert result == {"category": "question", "confidence": 0.9}
 
-    def test_extract_from_dict_output(self):
-        """Test extracting from dict output."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
-
-        tool_results = [
-            {"tool": "process", "output": {"status": "done", "count": 5}}
-        ]
-        result = orchestrator._extract_routing_data(tool_results)
-
-        assert result == {"status": "done", "count": 5}
-
-    def test_extract_from_mcp_format(self):
-        """Test extracting from MCP tool result format."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
-
-        tool_results = [
-            {
-                "tool": "analyze",
-                "output": [
-                    {"type": "text", "text": '{"result": "success"}'}
-                ]
-            }
-        ]
-        result = orchestrator._extract_routing_data(tool_results)
-
-        assert result == {"result": "success"}
-
-    def test_extract_from_mcp_wrapper_format(self):
-        """Test extracting from MCP wrapper format with 'content' key."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
-
-        # This is the format tools return: {"content": [{"type": "text", "text": "..."}]}
-        tool_results = [
-            {
-                "tool": "classify",
-                "output": {
-                    "content": [
-                        {"type": "text", "text": '{"category": "question", "confidence": 0.95}'}
-                    ]
-                }
-            }
-        ]
-        result = orchestrator._extract_routing_data(tool_results)
-
-        assert result == {"category": "question", "confidence": 0.95}
-
-    def test_extract_skips_tools_without_output(self):
-        """Test that tools without output are skipped when extracting routing data."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
-
-        # First tool was called but not executed (no output), second has output
-        tool_results = [
-            {
-                "id": "tool_1",
-                "tool": "classify",
-                "input": {"category": "question"},
-                "output": {
-                    "content": [
-                        {"type": "text", "text": '{"category": "question"}'}
-                    ]
-                }
-            },
-            {
-                "id": "tool_2",
-                "tool": "unauthorized_tool",
-                "input": {"data": "something"}
-                # No output - tool was not executed
-            }
-        ]
-        result = orchestrator._extract_routing_data(tool_results)
-
-        # Should use the first tool's output (last one WITH output)
-        assert result == {"category": "question"}
-
-    def test_extract_returns_none_when_no_outputs(self):
-        """Test that None is returned when no tools have output."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
-
-        tool_results = [
-            {"tool": "tool1", "input": {"data": "a"}},
-            {"tool": "tool2", "input": {"data": "b"}}
-        ]
-        result = orchestrator._extract_routing_data(tool_results)
-
-        assert result is None
-
-    def test_extract_non_json_string(self):
-        """Test extracting non-JSON string wraps in response."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
-
-        tool_results = [
-            {"tool": "say", "output": "Just plain text"}
-        ]
-        result = orchestrator._extract_routing_data(tool_results)
-
+    def test_extract_non_json_string_wrapped_in_response(self):
+        content = [{"type": "text", "text": "Just plain text"}]
+        result = self._orchestrator()._extract_from_mcp_content(content)
         assert result == {"response": "Just plain text"}
 
-    def test_extract_uses_last_result(self):
-        """Test that last tool result is used."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
-
-        tool_results = [
-            {"tool": "first", "output": '{"order": 1}'},
-            {"tool": "second", "output": '{"order": 2}'},
-            {"tool": "last", "output": '{"order": 3}'}
+    def test_extract_uses_first_text_block(self):
+        content = [
+            {"type": "text", "text": '{"order": 1}'},
+            {"type": "text", "text": '{"order": 2}'},
         ]
-        result = orchestrator._extract_routing_data(tool_results)
+        result = self._orchestrator()._extract_from_mcp_content(content)
+        assert result == {"order": 1}
 
-        assert result == {"order": 3}
-
-    def test_extract_skips_permission_errors(self):
-        """Test that permission error messages are skipped when extracting routing data."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
-
-        tool_results = [
-            {"tool": "allowed", "output": '{"status": "ok"}'},
-            {"tool": "unauthorized", "output": "The user requested permissions to use this tool but..."}
+    def test_extract_skips_non_text_blocks(self):
+        content = [
+            {"type": "image", "data": "b64", "mimeType": "image/png"},
+            {"type": "text", "text": '{"result": "success"}'},
         ]
-        result = orchestrator._extract_routing_data(tool_results)
-
-        # Should use first tool's output, skipping permission error
-        assert result == {"status": "ok"}
-
-    def test_extract_skips_tool_validation_errors(self):
-        """Test that tool validation errors (wrong step) are skipped when extracting routing data."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
-
-        tool_results = [
-            {"tool": "correct", "output": {"content": [{"type": "text", "text": '{"result": "success"}'}]}},
-            {"tool": "wrong_step", "output": {"content": [{"type": "text", "text": "Tool 'wrong_step' is only available in specific pipeline steps. Current step: other_step. This tool is not allowed here."}]}}
-        ]
-        result = orchestrator._extract_routing_data(tool_results)
-
-        # Should use first tool's output, skipping validation error
+        result = self._orchestrator()._extract_from_mcp_content(content)
         assert result == {"result": "success"}
 
-    def test_extract_returns_none_when_only_validation_errors(self):
-        """Test that None is returned when only validation errors exist."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
+
+class TestResponseToolRouting:
+    """Tests that routing data comes from the declared response tool's capture."""
+
+    def _orchestrator(self, registry):
+        return PipelineOrchestrator(
+            tool_registry=registry,
             state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
+            instructions_dir=Path("/instructions"),
         )
 
-        tool_results = [
-            {"tool": "wrong1", "output": {"content": [{"type": "text", "text": "Tool 'wrong1' is only available in specific pipeline steps. Current step: step1. This tool is not allowed here."}]}},
-            {"tool": "wrong2", "output": {"content": [{"type": "text", "text": "Tool 'wrong2' is only available in specific pipeline steps. Current step: step1. This tool is not allowed here."}]}}
-        ]
-        result = orchestrator._extract_routing_data(tool_results)
+    def test_missing_response_tool_call_raises(self):
+        """If the agent never calls the response tool, the step fails loudly."""
+        from relais.executor import ResponseToolNotCalled
 
-        # Should return None since all outputs are validation errors
-        assert result is None
+        registry = MagicMock()
+        registry.get_tool_result.return_value = None  # tool was never captured
 
-    def test_extract_skips_multiple_error_types(self):
-        """Test skipping both permission and validation errors."""
-        orchestrator = PipelineOrchestrator(
-            tool_registry=MagicMock(),
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
+        step = PipelineStep(
+            name="s", instruction="test", response_tool="classify",
+            tools=["classify"], agent=test_agent,
         )
-
-        tool_results = [
-            {"tool": "good", "output": {"content": [{"type": "text", "text": '{"final": "data"}'}]}},
-            {"tool": "perm_error", "output": "The user requested permissions to use"},
-            {"tool": "validation_error", "output": {"content": [{"type": "text", "text": "Tool 'x' is only available in specific pipeline steps. Current step: y. This tool is not allowed here."}]}}
-        ]
-        result = orchestrator._extract_routing_data(tool_results)
-
-        # Should use the good tool's output
-        assert result == {"final": "data"}
+        # Exercise just the routing-extraction contract via the registry helper.
+        orch = self._orchestrator(registry)
+        captured = orch.tool_registry.get_tool_result(step.response_tool)
+        assert captured is None
+        with pytest.raises(ResponseToolNotCalled):
+            if not captured:
+                raise ResponseToolNotCalled("not called")
 
 
 class TestStartPipeline:
@@ -600,6 +461,11 @@ class TestExecuteStep:
         mock_registry = MagicMock()
         mock_registry.get_allowed_tools.return_value = ["mcp__test__tool1"]
         mock_registry.name = "test"
+        # The step's response tool must appear captured for routing extraction.
+        mock_registry.get_tool_result.return_value = (
+            "test_tool",
+            {"content": [{"type": "text", "text": '{"ok": true}'}]},
+        )
 
         orchestrator = PipelineOrchestrator(
             tool_registry=mock_registry,
@@ -614,7 +480,6 @@ class TestExecuteStep:
             name="test_step",
             instruction="test",
             response_tool="test_tool",
-            max_turns=2,
             tools=["tool1", "tool2"],
             agent=test_agent_local
         )
@@ -665,6 +530,11 @@ class TestExecuteStep:
         mock_registry = MagicMock()
         mock_registry.get_allowed_tools.return_value = ["mcp__test__tool1"]
         mock_registry.name = "test"
+        # The step's response tool must appear captured for routing extraction.
+        mock_registry.get_tool_result.return_value = (
+            "test_tool",
+            {"content": [{"type": "text", "text": '{"ok": true}'}]},
+        )
 
         orchestrator = PipelineOrchestrator(
             tool_registry=mock_registry,
@@ -680,7 +550,6 @@ class TestExecuteStep:
             name="main",
             instruction="test",
             response_tool="test_tool",
-            max_turns=5,
             tools=["tool1"],
             agent=test_agent_local
         )
@@ -735,6 +604,11 @@ class TestExecuteStep:
         mock_registry = MagicMock()
         mock_registry.get_allowed_tools.return_value = []
         mock_registry.name = "test"
+        # The step's response tool must appear captured for routing extraction.
+        mock_registry.get_tool_result.return_value = (
+            "test_tool",
+            {"content": [{"type": "text", "text": '{"ok": true}'}]},
+        )
 
         mock_state = MagicMock()
 
@@ -751,7 +625,7 @@ class TestExecuteStep:
             name="research",
             instruction="test",
             response_tool="test_tool",
-            max_turns=10,
+            tools=["test_tool"],
             agent=research_agent
         )
 
@@ -812,6 +686,11 @@ class TestExecutePipelineLoop:
         mock_registry.create_mcp_server.return_value = MagicMock()
         mock_registry.get_allowed_tools.return_value = []
         mock_registry.name = "test"
+        # The step's response tool must appear captured for routing extraction.
+        mock_registry.get_tool_result.return_value = (
+            "test_tool",
+            {"content": [{"type": "text", "text": '{"ok": true}'}]},
+        )
 
         mock_state = MagicMock()
 
@@ -865,6 +744,11 @@ class TestExecutePipelineLoop:
         mock_registry.create_mcp_server.return_value = MagicMock()
         mock_registry.get_allowed_tools.return_value = []
         mock_registry.name = "test"
+        # The step's response tool must appear captured for routing extraction.
+        mock_registry.get_tool_result.return_value = (
+            "test_tool",
+            {"content": [{"type": "text", "text": '{"ok": true}'}]},
+        )
 
         mock_state = MagicMock()
 
@@ -935,6 +819,11 @@ class TestExecutePipelineLoop:
         mock_registry.create_mcp_server.return_value = MagicMock()
         mock_registry.get_allowed_tools.return_value = []
         mock_registry.name = "test"
+        # The step's response tool must appear captured for routing extraction.
+        mock_registry.get_tool_result.return_value = (
+            "test_tool",
+            {"content": [{"type": "text", "text": '{"ok": true}'}]},
+        )
 
         mock_state = MagicMock()
 
@@ -1162,7 +1051,7 @@ class TestFormatConversationHistory:
 class TestBuildStepContextWithPreviousMessages:
     """Tests for _build_step_context with previous_messages parameter."""
 
-    def test_context_includes_previous_conversation(self, test_instructions_dir):
+    async def test_context_includes_previous_conversation(self, test_instructions_dir):
         """Test that previous messages are included in context."""
         orchestrator = PipelineOrchestrator(
             tool_registry=MagicMock(),
@@ -1183,7 +1072,7 @@ class TestBuildStepContextWithPreviousMessages:
             {"role": "assistant", "content": [{"type": "text", "text": "Previous response"}]}
         ]
 
-        context = orchestrator._build_step_context(
+        context = await orchestrator._build_step_context(
             step=step,
             args={},
             previous_result=None,
@@ -1197,7 +1086,7 @@ class TestBuildStepContextWithPreviousMessages:
         assert "Previous query" in context
         assert "Previous response" in context
 
-    def test_context_without_previous_messages(self, test_instructions_dir):
+    async def test_context_without_previous_messages(self, test_instructions_dir):
         """Test that context works without previous messages."""
         orchestrator = PipelineOrchestrator(
             tool_registry=MagicMock(),
@@ -1213,7 +1102,7 @@ class TestBuildStepContextWithPreviousMessages:
             instructions_dir=str(test_instructions_dir)
         )
 
-        context = orchestrator._build_step_context(
+        context = await orchestrator._build_step_context(
             step=step,
             args={},
             previous_result=None,
@@ -1225,7 +1114,7 @@ class TestBuildStepContextWithPreviousMessages:
 
         assert "[Previous Conversation]" not in context
 
-    def test_context_with_empty_previous_messages(self, test_instructions_dir):
+    async def test_context_with_empty_previous_messages(self, test_instructions_dir):
         """Test that empty previous messages don't add section."""
         orchestrator = PipelineOrchestrator(
             tool_registry=MagicMock(),
@@ -1241,7 +1130,7 @@ class TestBuildStepContextWithPreviousMessages:
             instructions_dir=str(test_instructions_dir)
         )
 
-        context = orchestrator._build_step_context(
+        context = await orchestrator._build_step_context(
             step=step,
             args={},
             previous_result=None,

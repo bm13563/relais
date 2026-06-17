@@ -517,7 +517,7 @@ class TestStepValidation:
         assert "content" in result
         assert len(result["content"]) == 1
         assert result["content"][0]["type"] == "text"
-        assert "only available in specific pipeline steps" in result["content"][0]["text"]
+        assert "is not available in step" in result["content"][0]["text"]
         assert "other_step" in result["content"][0]["text"]
 
     @patch('relais.tools.sdk_tool')
@@ -577,7 +577,8 @@ class TestStepValidation:
 
         # tool_c should be blocked
         result_c = asyncio.run(tool_c({}))
-        assert "only available in specific pipeline steps" in result_c["content"][0]["text"]
+        assert "is not available in step" in result_c["content"][0]["text"]
+        assert "tool_c" in result_c["content"][0]["text"]
 
     @patch('relais.tools.sdk_tool')
     def test_set_current_step_with_empty_tools(self, mock_sdk_tool):
@@ -598,4 +599,5 @@ class TestStepValidation:
 
         # Tool call should be blocked
         result = asyncio.run(any_tool({}))
-        assert "only available in specific pipeline steps" in result["content"][0]["text"]
+        assert "is not available in step" in result["content"][0]["text"]
+        assert "restricted_step" in result["content"][0]["text"]

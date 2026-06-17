@@ -1,17 +1,40 @@
-"""Pytest configuration and shared fixtures."""
+"""Pytest configuration and shared fixtures.
 
-import os
+All fixtures target the current agent-based API:
+- Every PipelineStep carries an explicit `agent=PipelineAgent(...)`.
+- `max_turns`, `model`, `thinking` live on the agent, not the step.
+- Every step declares a `response_tool`.
+- Hooks may be sync or async; `get_hook_data()` is async.
+
+Unit tests are fully offline: no real model calls, no real filesystem writes
+from mocked collaborators.
+"""
+
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 import pytest
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from relais.step import PipelineStep
+from relais.agent import PipelineAgent
 from relais.tools import ToolRegistry
 from relais.state import SQLiteStateManager, PipelineRunState
+
+
+# =============================================================================
+# Helpers
+# =============================================================================
+
+def make_agent(name="test_agent", tools=None, **kwargs):
+    """Build a PipelineAgent for a step fixture.
+
+    Keeps test step definitions terse while honoring the rule that every step
+    must carry an explicit agent.
+    """
+    return PipelineAgent(name=name, tools=list(tools or []), **kwargs)
 
 
 # =============================================================================
@@ -24,7 +47,6 @@ def test_instructions_dir(tmp_path):
     instructions_dir = tmp_path / "instructions"
     instructions_dir.mkdir()
 
-    # Create sample instruction files
     (instructions_dir / "test_step.md").write_text("# Test Step\nDo the test task.")
     (instructions_dir / "greet.md").write_text("# Greeting\nGreet the user warmly.")
     (instructions_dir / "analyze.md").write_text("# Analyze\nAnalyze the input.")
@@ -50,9 +72,9 @@ def simple_step():
         name="simple",
         instruction="test_step",
         response_tool="test_tool",
-        max_turns=5,
         tools=["test_tool"],
-        next={"default": None}
+        agent=make_agent("simple_agent", tools=["test_tool"], max_turns=5),
+        next={"default": None},
     )
 
 
@@ -62,9 +84,9 @@ def routing_step():
     return PipelineStep(
         name="router",
         instruction="analyze",
-        response_tool="test_tool",
-        max_turns=3,
+        response_tool="classify",
         tools=["classify"],
+        agent=make_agent("router_agent", tools=["classify"], max_turns=3),
         next={
             "field": "category",
             "routes": [
@@ -72,8 +94,8 @@ def routing_step():
                 {"equals": "task", "goto": "execute"},
                 {"equals": "chat", "goto": "respond"},
             ],
-            "default": "fallback"
-        }
+            "default": "fallback",
+        },
     )
 
 
@@ -89,26 +111,30 @@ def step_with_hooks():
     return PipelineStep(
         name="hooked",
         instruction="test_step",
-        response_tool="test_tool",
-        max_turns=5,
+        response_tool="context_tool",
         tools=["context_tool"],
         hooks=[time_hook, user_hook],
-        next={"default": None}
+        agent=make_agent("hooked_agent", tools=["context_tool"], max_turns=5),
+        next={"default": None},
     )
 
 
 @pytest.fixture
-def subagent_step():
-    """A step that runs as an isolated subagent."""
+def limited_agent_step():
+    """A step driven by a step-limited (non-persistent) agent."""
     return PipelineStep(
-        name="subagent_step",
+        name="limited_step",
         instruction="process",
-        response_tool="test_tool",
-        max_turns=10,
+        response_tool="research_tool",
         tools=["research_tool"],
-        use_subagent=True,
-        model="haiku",
-        next={"default": "summary"}
+        agent=make_agent(
+            "limited_agent",
+            tools=["research_tool"],
+            steps=1,
+            max_turns=10,
+            model="haiku",
+        ),
+        next={"default": "summary"},
     )
 
 
@@ -118,22 +144,25 @@ def subagent_step():
 
 @pytest.fixture
 def tool_registry():
-    """A tool registry with test tools registered."""
-    registry = ToolRegistry("test_tools")
-    return registry
+    """An empty tool registry."""
+    return ToolRegistry("test_tools")
 
 
 @pytest.fixture
 def populated_tool_registry(tool_registry):
     """A tool registry with several test tools registered."""
-    @tool_registry.tool("greet", "Greet the user", {"name": str})
-    async def greet(args: dict) -> dict:
-        return {"content": [{"type": "text", "text": f"Hello {args.get('name', 'user')}!"}]}
+    from typing import Annotated
 
-    @tool_registry.tool("calculate", "Perform calculation", {"a": int, "b": int, "op": str})
-    async def calculate(args: dict) -> dict:
-        a, b = args.get("a", 0), args.get("b", 0)
-        op = args.get("op", "add")
+    @tool_registry.tool("greet", "Greet the user")
+    async def greet(name: Annotated[str, "The name to greet"]) -> dict:
+        return {"content": [{"type": "text", "text": f"Hello {name}!"}]}
+
+    @tool_registry.tool("calculate", "Perform calculation")
+    async def calculate(
+        a: Annotated[int, "First operand"],
+        b: Annotated[int, "Second operand"],
+        op: Annotated[str, "Operation: add/subtract/multiply"],
+    ) -> dict:
         if op == "add":
             result = a + b
         elif op == "subtract":
@@ -144,7 +173,7 @@ def populated_tool_registry(tool_registry):
             result = 0
         return {"content": [{"type": "text", "text": str(result)}]}
 
-    return registry
+    return tool_registry
 
 
 # =============================================================================
@@ -152,50 +181,29 @@ def populated_tool_registry(tool_registry):
 # =============================================================================
 
 @pytest.fixture
-def mock_state_manager():
-    """Mock state manager for unit tests."""
+def mock_state_manager(tmp_path):
+    """Mock state manager for unit tests.
+
+    `db_path` is a real string so that collaborators which derive paths from it
+    (e.g. the orchestrator's AgentStateManager) do not write mock-named
+    directories into the working tree.
+    """
     manager = MagicMock(spec=SQLiteStateManager)
+    manager.db_path = str(tmp_path / "mock_pipeline.db")
     manager.create_pipeline_run.return_value = "test-run-id-123"
     manager.get_pipeline_run.return_value = PipelineRunState(
         id="test-run-id-123",
         pipeline_name="test_pipeline",
         current_step="test_step",
         status="running",
+        session=None,
         args={},
         conversation_history=[],
         step_results={},
         created_at=None,
-        updated_at=None
+        updated_at=None,
     )
     return manager
-
-
-@pytest.fixture
-def mock_sdk_query():
-    """Mock for claude_agent_sdk.query function."""
-    async def mock_query(*args, **kwargs):
-        # Yield a minimal successful response
-        from unittest.mock import MagicMock
-
-        # Create mock assistant message with text block
-        text_block = MagicMock()
-        text_block.text = "Test response from Claude"
-
-        assistant_msg = MagicMock()
-        assistant_msg.content = [text_block]
-        type(assistant_msg).__name__ = "AssistantMessage"
-
-        # Create mock result message
-        result_msg = MagicMock()
-        result_msg.num_turns = 1
-        result_msg.session_id = "mock-session-123"
-        result_msg.is_error = False
-        type(result_msg).__name__ = "ResultMessage"
-
-        yield assistant_msg
-        yield result_msg
-
-    return mock_query
 
 
 # =============================================================================
@@ -209,19 +217,19 @@ def sample_steps():
         "start": PipelineStep(
             name="start",
             instruction="greet",
-            response_tool="test_tool",
-            max_turns=3,
+            response_tool="greet",
             tools=["greet"],
-            next={"default": "process"}
+            agent=make_agent("start_agent", tools=["greet"], max_turns=3),
+            next={"default": "process"},
         ),
         "process": PipelineStep(
             name="process",
             instruction="process",
-            response_tool="test_tool",
-            max_turns=5,
+            response_tool="calculate",
             tools=["calculate"],
-            next={"default": None}
-        )
+            agent=make_agent("process_agent", tools=["calculate"], max_turns=5),
+            next={"default": None},
+        ),
     }
 
 
@@ -232,40 +240,40 @@ def routing_steps():
         "analyze": PipelineStep(
             name="analyze",
             instruction="analyze",
-            response_tool="test_tool",
-            max_turns=2,
+            response_tool="classify",
             tools=["classify"],
+            agent=make_agent("analyze_agent", tools=["classify"], max_turns=2),
             next={
                 "field": "category",
                 "routes": [
                     {"equals": "A", "goto": "handle_a"},
                     {"equals": "B", "goto": "handle_b"},
                 ],
-                "default": "handle_default"
-            }
+                "default": "handle_default",
+            },
         ),
         "handle_a": PipelineStep(
             name="handle_a",
             instruction="process",
-            response_tool="test_tool",
-            max_turns=3,
+            response_tool="process_a",
             tools=["process_a"],
-            next={"default": None}
+            agent=make_agent("handle_a_agent", tools=["process_a"], max_turns=3),
+            next={"default": None},
         ),
         "handle_b": PipelineStep(
             name="handle_b",
             instruction="process",
-            response_tool="test_tool",
-            max_turns=3,
+            response_tool="process_b",
             tools=["process_b"],
-            next={"default": None}
+            agent=make_agent("handle_b_agent", tools=["process_b"], max_turns=3),
+            next={"default": None},
         ),
         "handle_default": PipelineStep(
             name="handle_default",
             instruction="process",
-            response_tool="test_tool",
-            max_turns=3,
+            response_tool="process_default",
             tools=["process_default"],
-            next={"default": None}
-        )
+            agent=make_agent("handle_default_agent", tools=["process_default"], max_turns=3),
+            next={"default": None},
+        ),
     }
