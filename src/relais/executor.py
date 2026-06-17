@@ -470,10 +470,19 @@ class PipelineOrchestrator:
                 print(f"  Total steps: {step_count}")
                 print(f"{'='*60}\n")
         finally:
-            # Disconnect all agents that have clients
-            for agent in run_agents.values():
+            # Disconnect clients in LIFO order. Each ClaudeSDKClient enters an
+            # anyio task scope on connect(); anyio requires those scopes to be
+            # exited in reverse order of entry, so we disconnect newest-first.
+            # Teardown errors are logged, not raised, so a transient disconnect
+            # problem never fails an otherwise-successful run.
+            for agent in reversed(list(run_agents.values())):
                 if agent.has_client():
-                    await agent.disconnect()
+                    try:
+                        await agent.disconnect()
+                    except Exception as e:
+                        self.log.warning(f"Error disconnecting agent '{agent.name}': {e}")
+                    finally:
+                        agent.client = None
 
     async def _execute_step(
         self,
