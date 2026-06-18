@@ -12,6 +12,7 @@ from .step import PipelineStep
 from .tools import ToolRegistry, is_tool_function
 from .state import SQLiteStateManager
 from .executor import PipelineConfig, PipelineOrchestrator, StepExecutionResult
+from .conversation import Conversation, register as _register_conversation
 from .logging_config import get_logger
 
 log = get_logger('pipeline')
@@ -116,10 +117,13 @@ class Pipeline:
         """
         log.info("pipeline_create", pipeline=name, steps=len(steps))
 
-        # Collect unique agents from all steps
+        # Collect unique agents from all steps. A pure-park await_input step (no
+        # agent) is the one exception — it runs nothing, it only suspends.
         agents = {}
         for step in steps.values():
             if step.agent is None:
+                if step.await_input:
+                    continue
                 raise ValueError(
                     f"Step '{step.name}' is missing required 'agent' parameter. "
                     f"Every step must have an explicit agent assigned."
@@ -239,6 +243,25 @@ class Pipeline:
             initial_input=initial_input,
             args=args,
         )
+
+    def start_conversation(self, args: dict = None):
+        """Begin a conversational run of this pipeline.
+
+        A conversation runs the same steps but suspends at any step marked
+        await_input, returning control to the caller; the agents stay warm in RAM
+        between turns. Drive it with continue_conversation(text) on the returned
+        Conversation, and end_conversation() when done.
+
+        Args:
+            args: Pipeline arguments, surfaced to every step as [Pipeline Args].
+
+        Returns:
+            A Conversation handle.
+        """
+        config = self.orchestrator.pipelines[self.name]
+        convo = Conversation(self.orchestrator, config, args=args)
+        _register_conversation(convo)
+        return convo
 
     def get_run(self, run_id: str):
         """Get the state of a pipeline run.

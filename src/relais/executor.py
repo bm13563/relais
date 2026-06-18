@@ -176,98 +176,132 @@ class PipelineOrchestrator:
         initial_input: str,
         args: dict = None,
     ) -> None:
-        """Run the pipeline loop start-to-finish in one process.
+        """Run a pipeline start-to-finish in one process (fire-and-forget).
 
-        Each agent is instantiated once (cloned from its config template) and
-        keeps its live client across every step it runs.
+        Each agent is instantiated once and keeps its live client across every
+        step it runs. await_input is ignored here — a fire-and-forget run does
+        not suspend.
         """
-        current_step_name = config.start_step
-        previous_result = None
-        step_count = 0
-        run_agents: Dict[str, PipelineAgent] = {}  # name -> live agent (preserves client)
-
+        run_agents: Dict[str, PipelineAgent] = {}
         mcp_server = self.tool_registry.create_mcp_server()
-
         try:
-            while current_step_name:
-                step_count += 1
-                step = config.steps.get(current_step_name)
-                if not step:
-                    raise ValueError(f"Step not found: {current_step_name}")
-
-                # Reuse the live instance for this agent name; if a step-budgeted
-                # instance has expired, retire it and spin up a fresh one with
-                # clean context (this is how looping back to an agent resets it).
-                agent_name = step.agent.name
-                agent = run_agents.get(agent_name)
-                if agent is not None and agent.is_expired():
-                    if agent.has_client():
-                        await self._safe_disconnect(agent)
-                    agent = None
-                if agent is None:
-                    agent = self._clone_agent(step.agent)
-                    run_agents[agent_name] = agent
-
-                context = await self._build_step_context(
-                    step=step,
-                    previous_result=previous_result,
-                    initial_input=initial_input,
-                    instructions_dir=Path(config.instructions_dir),
-                    args=args,
-                )
-
-                self.log.info(
-                    "step_start", run=run_id, n=step_count, step=current_step_name,
-                    agent=agent_name, tools=_tool_names(step.tools),
-                    max_turns=agent.max_turns, model=agent.model or "opus",
-                )
-                self.log.debug("step_context", run=run_id, step=current_step_name, context=context)
-
-                result = await self._execute_step(
-                    step=step, context=context, mcp_server=mcp_server, agent=agent,
-                )
-
-                routing_data = result.routing_data or {}
-                next_step_name = step.resolve_next(routing_data)
-
-                self.log.info(
-                    "step_done", run=run_id, step=current_step_name, agent=agent_name,
-                    turns=result.turns_used, stop=result.stop_reason,
-                    next=next_step_name or "END", routing_data=routing_data,
-                )
-
-                self.state_manager.update_pipeline_step(
-                    run_id=run_id,
-                    current_step=next_step_name or current_step_name,
-                    step_result={
-                        'step': current_step_name,
-                        'turns_used': result.turns_used,
-                        'stop_reason': result.stop_reason,
-                        'routing_data': routing_data,
-                        'final_response': result.final_response,
-                    },
-                )
-
-                # Spend one step of the agent's budget. If it's now expired,
-                # disconnect its client promptly; it stays in run_agents so a
-                # re-entry spins up a fresh instance (see the fetch block above).
-                agent.consume_step()
-                if agent.is_expired() and agent.has_client():
-                    self.log.debug("agent_expired", run=run_id, agent=agent_name)
-                    await self._safe_disconnect(agent)
-
-                previous_result = routing_data
-                current_step_name = next_step_name
-
+            await self._run_segment(
+                run_id, config, config.start_step, initial_input, args,
+                run_agents, mcp_server, conversational=False,
+            )
             self.state_manager.complete_pipeline(run_id)
-            self.log.info("run_completed", run=run_id, pipeline=config.name, steps=step_count)
+            self.log.info("run_completed", run=run_id, pipeline=config.name)
         finally:
-            # Disconnect any remaining live clients newest-first. Each
-            # ClaudeSDKClient enters an anyio task scope on connect(); anyio
-            # requires those scopes to be exited in reverse order.
             for agent in reversed(list(run_agents.values())):
                 if agent.has_client():
                     await self._safe_disconnect(agent)
+
+    async def _run_segment(
+        self,
+        run_id: str,
+        config: PipelineConfig,
+        start_step: str,
+        step_input: str,
+        args: dict,
+        run_agents: Dict[str, PipelineAgent],
+        mcp_server,
+        conversational: bool,
+    ) -> dict:
+        """Run steps from start_step until the pipeline ends or (in conversational
+        mode) a step with await_input suspends the run.
+
+        run_agents persists across calls so agents keep their live clients (and
+        context) between conversational turns. The caller owns teardown.
+
+        Returns a dict: {"suspended": bool, "next_step": str|None, "step": str|None,
+        "output": dict|None}. suspended=True means a step with await_input ran (or,
+        for a pure-park entry, parked) and the run is now waiting for input at
+        "next_step".
+        """
+        current_step_name = start_step
+        previous_result = None
+        last_output = None
+        last_step_name = None
+
+        while current_step_name:
+            step = config.steps.get(current_step_name)
+            if not step:
+                raise ValueError(f"Step not found: {current_step_name}")
+
+            # Pure-park await step (no agent): it runs nothing; it just establishes
+            # the wait. Only meaningful as an entry/standalone suspension point.
+            if step.await_input and step.agent is None:
+                if conversational and step_input is None:
+                    next_name = step.resolve_next({})
+                    return {"suspended": True, "next_step": next_name, "step": step.name, "output": None}
+                # Input has arrived (or non-conversational): fall through to the next step.
+                current_step_name = step.resolve_next({})
+                continue
+
+            agent_name = step.agent.name
+            agent = run_agents.get(agent_name)
+            if agent is not None and agent.is_expired():
+                if agent.has_client():
+                    await self._safe_disconnect(agent)
+                agent = None
+            if agent is None:
+                agent = self._clone_agent(step.agent)
+                run_agents[agent_name] = agent
+
+            context = await self._build_step_context(
+                step=step,
+                previous_result=previous_result,
+                initial_input=step_input,
+                instructions_dir=Path(config.instructions_dir),
+                args=args,
+            )
+            step_input = None  # human/initial input is consumed by the first step only
+
+            self.log.info(
+                "step_start", run=run_id, step=current_step_name, agent=agent_name,
+                tools=_tool_names(step.tools), max_turns=agent.max_turns, model=agent.model or "opus",
+            )
+            self.log.debug("step_context", run=run_id, step=current_step_name, context=context)
+
+            result = await self._execute_step(
+                step=step, context=context, mcp_server=mcp_server, agent=agent,
+            )
+            routing_data = result.routing_data or {}
+            next_step_name = step.resolve_next(routing_data)
+
+            self.log.info(
+                "step_done", run=run_id, step=current_step_name, agent=agent_name,
+                turns=result.turns_used, stop=result.stop_reason,
+                next=next_step_name or "END", routing_data=routing_data,
+            )
+            self.state_manager.update_pipeline_step(
+                run_id=run_id,
+                current_step=next_step_name or current_step_name,
+                step_result={
+                    'step': current_step_name,
+                    'turns_used': result.turns_used,
+                    'stop_reason': result.stop_reason,
+                    'routing_data': routing_data,
+                    'final_response': result.final_response,
+                },
+            )
+
+            agent.consume_step()
+            if agent.is_expired() and agent.has_client():
+                self.log.debug("agent_expired", run=run_id, agent=agent_name)
+                await self._safe_disconnect(agent)
+
+            last_output = routing_data
+            last_step_name = current_step_name
+
+            # Suspend AFTER this step if it awaits input (conversational mode).
+            if conversational and step.await_input:
+                return {"suspended": True, "next_step": next_step_name, "step": last_step_name, "output": routing_data}
+
+            previous_result = routing_data
+            current_step_name = next_step_name
+
+        return {"suspended": False, "next_step": None, "step": last_step_name, "output": last_output}
 
     async def _safe_disconnect(self, agent: PipelineAgent) -> None:
         """Disconnect an agent's client, logging (not raising) on error."""

@@ -21,6 +21,7 @@ from .executor import (
     ResponseToolNotCalled,
 )
 from .pipeline import Pipeline, cleanup_all_pipeline_states
+from .conversation import Conversation, Turn
 from .utils import read_markdown
 from .logging_config import setup_logging, get_logger
 from .agent import PipelineAgent
@@ -29,6 +30,8 @@ __all__ = [
     # High-level API
     "Pipeline",
     "PipelineStep",
+    "Conversation",
+    "Turn",
 
     # Execution engine
     "PipelineOrchestrator",

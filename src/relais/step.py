@@ -33,6 +33,13 @@ class PipelineStep:
               - {"field": "field_name", "routes": [...], "default": "fallback"}
                 for conditional routing based on tool result
         agent: PipelineAgent instance to use for this step.
+        await_input: If True, the run suspends after this step and returns control
+                     to the caller (a conversational pipeline). The caller's next
+                     continue_conversation(text) resumes: the text becomes the input
+                     to the next step. A pure-park await step (no agent) just waits
+                     — useful as the entry step so the pipeline boots awaiting the
+                     opening message; an await step with an agent runs it, produces
+                     output for the human, then waits for the reply.
     """
     name: str
     instruction: str
@@ -41,9 +48,13 @@ class PipelineStep:
     hooks: List[Callable[[], Any]] = field(default_factory=list)
     next: dict = field(default_factory=lambda: {"default": None})
     agent: Optional['PipelineAgent'] = None
+    await_input: bool = False
 
     def __post_init__(self):
-        if not self.response_tool:
+        # A pure-park await_input step (no agent) runs nothing, so it needs no
+        # response_tool. Every other step must declare one.
+        is_pure_park = self.await_input and self.agent is None
+        if not self.response_tool and not is_pure_park:
             raise ValueError(
                 f"Step '{self.name}' is missing required 'response_tool'. "
                 f"Every step must declare which tool provides its output."
