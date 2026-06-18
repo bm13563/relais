@@ -14,7 +14,9 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from relais.step import PipelineStep
 from relais.agent import PipelineAgent
 from relais.executor import PipelineOrchestrator, PipelineConfig, StepExecutionResult
-from relais.conversation import Turn, Conversation, register, get, _conversations, _evict_idle
+from relais.conversation import (
+    Turn, Conversation, register, get, active_ids, is_active, _conversations, _evict_idle,
+)
 from pathlib import Path
 
 
@@ -164,3 +166,12 @@ class TestRegistry:
         _evict_idle()
         idle.end_conversation.assert_called_once()
         live.end_conversation.assert_not_called()
+
+    def test_active_ids_and_is_active(self):
+        convo = MagicMock(spec=Conversation)
+        convo.id = "c1"
+        convo.is_idle.return_value = False
+        _conversations["c1"] = convo
+        assert "c1" in active_ids()
+        assert is_active("c1") is True
+        assert is_active("nope") is False

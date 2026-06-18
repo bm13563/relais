@@ -218,6 +218,17 @@ def get(conversation_id: str) -> Optional[Conversation]:
     return _conversations.get(conversation_id)
 
 
+def active_ids() -> list:
+    """Ids of conversations currently live in RAM (idle ones are evicted first)."""
+    _evict_idle()
+    return list(_conversations.keys())
+
+
+def is_active(conversation_id: str) -> bool:
+    """Whether a conversation is currently live in RAM."""
+    return conversation_id in _conversations
+
+
 def _evict_idle():
     now = time.time()
     for cid, convo in list(_conversations.items()):
