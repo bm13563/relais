@@ -37,6 +37,16 @@ class PipelineAgent:
                step on a tight leash; raise it for agents that iterate.
         model: Model for this agent (opus, sonnet, haiku).
         thinking: Enable extended thinking for this agent.
+        permission_mode: How the SDK gates built-in tools for this agent's client
+               (default "acceptEdits"). MCP pipeline tools are always gated by the
+               registry regardless of this. Use "bypassPermissions" for an agent
+               that must run built-in Bash/file tools unattended (a "godmode"
+               agent in a headless run, where no human is present to approve a
+               Bash call); keep the default for agents that only need edits.
+        effort: Reasoning-effort level for this agent ("low", "medium", "high",
+               "xhigh", "max"). None (default) leaves it to the SDK/model default.
+               Higher effort spends more reasoning before answering — raise it for
+               agents doing hard analysis, lower it for cheap mechanical steps.
         steps_remaining: Runtime counter for the current live instance (set from
                 steps when the instance is created). None for persistent agents.
         client: The live ClaudeSDKClient, set on first run and reused across the
@@ -49,6 +59,8 @@ class PipelineAgent:
     max_turns: int = 10
     model: Optional[str] = "opus"
     thinking: Optional[bool] = False
+    permission_mode: str = "acceptEdits"
+    effort: Optional[str] = None
     steps_remaining: Optional[int] = field(default=None, init=False)
     client: Any = None  # ClaudeSDKClient; not imported to avoid a circular dep
 
@@ -87,4 +99,6 @@ class PipelineAgent:
             and self.steps == other.steps
             and self.model == other.model
             and self.thinking == other.thinking
+            and self.permission_mode == other.permission_mode
+            and self.effort == other.effort
         )

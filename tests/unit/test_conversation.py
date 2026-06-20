@@ -84,7 +84,7 @@ class TestRunSegmentSuspend:
         }
         config = PipelineConfig(name="c", steps=steps, start_step="await", instructions_dir=str(test_instructions_dir))
 
-        async def fake_step(step, context, mcp_server, agent):
+        async def fake_step(step, context, mcp_server, agent, images=None):
             return StepExecutionResult(step.name, "", [], 1, "success", routing_data={"ok": True})
 
         with patch.object(orch, "_execute_step", side_effect=fake_step):
@@ -107,7 +107,7 @@ class TestRunSegmentSuspend:
         }
         config = PipelineConfig(name="c", steps=steps, start_step="summarize", instructions_dir=str(test_instructions_dir))
 
-        async def fake_step(step, context, mcp_server, agent):
+        async def fake_step(step, context, mcp_server, agent, images=None):
             return StepExecutionResult(step.name, "", [], 1, "success", routing_data={"summary": "done"})
 
         with patch.object(orch, "_execute_step", side_effect=fake_step):
@@ -131,7 +131,7 @@ class TestRunSegmentSuspend:
         }
         config = PipelineConfig(name="c", steps=steps, start_step="summarize", instructions_dir=str(test_instructions_dir))
 
-        async def fake_step(step, context, mcp_server, agent):
+        async def fake_step(step, context, mcp_server, agent, images=None):
             return StepExecutionResult(step.name, "", [], 1, "success", routing_data={})
 
         with patch.object(orch, "_execute_step", side_effect=fake_step):

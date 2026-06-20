@@ -137,14 +137,14 @@ class Conversation:
         next_step = self._config.start_step
         try:
             while True:
-                text, fut = await self._inbox.get()
+                text, images, fut = await self._inbox.get()
                 if text is _CLOSE:
                     fut.set_result(None)
                     return
                 try:
                     seg = await orch._run_segment(
                         self._run_id, self._config, next_step, text, self._args,
-                        run_agents, mcp_server, conversational=True,
+                        run_agents, mcp_server, conversational=True, step_images=images,
                     )
                 except Exception as e:
                     fut.set_exception(e)
@@ -162,9 +162,12 @@ class Conversation:
                 if agent.has_client():
                     await orch._safe_disconnect(agent)
 
-    def continue_conversation(self, text: str) -> Turn:
+    def continue_conversation(self, text: str, images: list = None) -> Turn:
         """Provide the next human input; run forward to the next suspension or the
-        end. Returns a Turn. Blocks until the turn completes (safe from sync code)."""
+        end. Returns a Turn. Blocks until the turn completes (safe from sync code).
+
+        images: optional list of base64-encoded PNG strings, attached to the
+        first step of this segment as image content blocks (vision input)."""
         if self._closed:
             raise RuntimeError("conversation is closed")
         if not self._turn_lock.acquire(blocking=False):
@@ -173,7 +176,7 @@ class Conversation:
             if self._inbox is None:
                 self._start()
             self._last_active = time.time()
-            turn = _runtime.submit(self._send(text))
+            turn = _runtime.submit(self._send(text, images))
             if not turn.awaiting:
                 self._closed = True
                 _conversations.pop(self.id, None)
@@ -181,9 +184,9 @@ class Conversation:
         finally:
             self._turn_lock.release()
 
-    async def _send(self, text):
+    async def _send(self, text, images=None):
         fut = _runtime.loop().create_future()
-        await self._inbox.put((text, fut))
+        await self._inbox.put((text, images, fut))
         return await fut
 
     def end_conversation(self):

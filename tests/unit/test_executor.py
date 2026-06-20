@@ -818,7 +818,7 @@ class TestExecutePipelineLoop:
         b_calls = {"n": 0}
         seen_instances = []  # the agent instance object passed to each step
 
-        async def mock_execute(step, context, mcp_server, agent):
+        async def mock_execute(step, context, mcp_server, agent, images=None):
             seen_instances.append(agent)
             # Give the live instance a fake client so we can see disconnects.
             if not agent.has_client():

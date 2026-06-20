@@ -128,6 +128,8 @@ class PipelineOrchestrator:
             max_turns=template.max_turns,
             model=template.model,
             thinking=template.thinking,
+            permission_mode=template.permission_mode,
+            effort=template.effort,
         )
 
     def start_pipeline(
@@ -206,6 +208,7 @@ class PipelineOrchestrator:
         run_agents: Dict[str, PipelineAgent],
         mcp_server,
         conversational: bool,
+        step_images: list = None,
     ) -> dict:
         """Run steps from start_step until the pipeline ends or (in conversational
         mode) a step with await_input suspends the run.
@@ -255,7 +258,9 @@ class PipelineOrchestrator:
                 instructions_dir=Path(config.instructions_dir),
                 args=args,
             )
+            images = step_images
             step_input = None  # human/initial input is consumed by the first step only
+            step_images = None  # images ride with that same first step only
 
             self.log.info(
                 "step_start", run=run_id, step=current_step_name, agent=agent_name,
@@ -264,7 +269,7 @@ class PipelineOrchestrator:
             self.log.debug("step_context", run=run_id, step=current_step_name, context=context)
 
             result = await self._execute_step(
-                step=step, context=context, mcp_server=mcp_server, agent=agent,
+                step=step, context=context, mcp_server=mcp_server, agent=agent, images=images,
             )
             routing_data = result.routing_data or {}
             next_step_name = step.resolve_next(routing_data)
@@ -318,6 +323,7 @@ class PipelineOrchestrator:
         context: str,
         mcp_server,
         agent: PipelineAgent,
+        images: list = None,
     ) -> StepExecutionResult:
         """Run one step on its agent's live client and capture routing data."""
         # Per-step tool scoping. This is the HARD constraint: the MCP wrapper
@@ -339,18 +345,40 @@ class PipelineOrchestrator:
                 "model": model,
                 "mcp_servers": {self.tool_registry.name: mcp_server},
                 "allowed_tools": allowed_tools,
-                "permission_mode": "acceptEdits",
+                "permission_mode": agent.permission_mode,
                 "cwd": self.cwd,
+                # SDK isolation: do NOT load filesystem settings
+                # (~/.claude/settings.json etc). Those layers can silently override
+                # the agent's requested model (e.g. an effortLevel/model pin found
+                # there was downgrading opus to sonnet). An agent's config is defined
+                # here in code, not by the ambient machine's Claude Code settings.
+                "setting_sources": [],
             }
             if thinking:
                 options_kwargs["max_thinking_tokens"] = 60000
+            if agent.effort:
+                options_kwargs["effort"] = agent.effort
             client = ClaudeSDKClient(options=ClaudeAgentOptions(**options_kwargs))
             await client.connect()
             agent.set_client(client)
         else:
             client = agent.client
 
-        await client.query(context)
+        if images:
+            content = [{"type": "text", "text": context}]
+            for img in images:
+                content.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/png", "data": img},
+                })
+            # query() treats a str specially and any non-str as an async iterable
+            # of message dicts — so to send content blocks we stream one full user
+            # message of our own.
+            async def _one_message():
+                yield {"type": "user", "message": {"role": "user", "content": content}, "parent_tool_use_id": None}
+            await client.query(_one_message())
+        else:
+            await client.query(context)
 
         tool_results = []
         final_response = ""
