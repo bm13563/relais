@@ -117,12 +117,13 @@ class Pipeline:
         """
         log.info("pipeline_create", pipeline=name, steps=len(steps))
 
-        # Collect unique agents from all steps. A pure-park await_input step (no
-        # agent) is the one exception — it runs nothing, it only suspends.
+        # Collect unique agents from all steps. Two kinds of step run no LLM and
+        # so need no agent: a pure-park await_input step (only suspends), and a
+        # route step (decides purely from its hooks).
         agents = {}
         for step in steps.values():
             if step.agent is None:
-                if step.await_input:
+                if step.await_input or step.route:
                     continue
                 raise ValueError(
                     f"Step '{step.name}' is missing required 'agent' parameter. "

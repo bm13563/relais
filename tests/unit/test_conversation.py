@@ -96,6 +96,38 @@ class TestRunSegmentSuspend:
         assert seg["step"] == "work"
 
     @pytest.mark.asyncio
+    async def test_route_step_branches_on_hook_no_llm(self, test_instructions_dir):
+        # A route step (no agent) decides the next step purely from its hooks.
+        orch = _orchestrator()
+
+        def hook_finished():
+            return {"finished": True}
+
+        steps = {
+            "work": PipelineStep(name="work", instruction="test_step", response_tool="t", agent=test_agent, next={"default": "route"}),
+            "route": PipelineStep(
+                name="route", instruction="route", route=True, hooks=[hook_finished],
+                next={"field": "finished", "routes": [{"equals": True, "goto": "brief"}], "default": "work"},
+            ),
+            "brief": PipelineStep(name="brief", instruction="test_step", response_tool="t", agent=test_agent, next={"default": None}),
+        }
+        config = PipelineConfig(name="c", steps=steps, start_step="work", instructions_dir=str(test_instructions_dir))
+
+        executed = []
+
+        async def fake_step(step, context, mcp_server, agent, images=None):
+            executed.append(step.name)
+            return StepExecutionResult(step.name, "", [], 1, "success", routing_data={})
+
+        with patch.object(orch, "_execute_step", side_effect=fake_step):
+            seg = await orch._run_segment(
+                "run", config, "work", "hi", {}, {}, MagicMock(), conversational=True,
+            )
+        # route ran no LLM (not in executed), but its hook sent us to 'brief'.
+        assert executed == ["work", "brief"]
+        assert seg["step"] == "brief"
+
+    @pytest.mark.asyncio
     async def test_mid_pipeline_await_runs_agent_then_suspends(self, test_instructions_dir):
         orch = _orchestrator()
         steps = {

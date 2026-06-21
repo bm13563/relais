@@ -49,12 +49,21 @@ class PipelineStep:
     next: dict = field(default_factory=lambda: {"default": None})
     agent: Optional['PipelineAgent'] = None
     await_input: bool = False
+    route: bool = False  # Pass-through: run hooks, route on their data, NO LLM call.
 
     def __post_init__(self):
         # A pure-park await_input step (no agent) runs nothing, so it needs no
-        # response_tool. Every other step must declare one.
+        # response_tool. A route (pass-through) step decides purely from its hooks,
+        # so it needs no agent/response_tool either. Every other step must declare
+        # a response_tool.
         is_pure_park = self.await_input and self.agent is None
-        if not self.response_tool and not is_pure_park:
+        if self.route:
+            if not self.hooks:
+                raise ValueError(
+                    f"Route step '{self.name}' needs at least one hook to decide on — "
+                    f"its routing data comes from hooks, not an LLM."
+                )
+        elif not self.response_tool and not is_pure_park:
             raise ValueError(
                 f"Step '{self.name}' is missing required 'response_tool'. "
                 f"Every step must declare which tool provides its output."

@@ -47,6 +47,16 @@ class TestPipelineConfig:
         )
         assert config.cwd == "/workdir"
 
+    def test_create_allows_agentless_route_step(self):
+        """A route step has no agent (it decides from hooks) — create() must allow it."""
+        from relais import Pipeline
+        steps = {
+            "work": PipelineStep(name="work", instruction="test", response_tool="t", agent=test_agent, next={"default": "route"}),
+            "route": PipelineStep(name="route", instruction="route", route=True, hooks=[lambda: {"x": 1}], next={"default": None}),
+        }
+        # Should not raise "missing required 'agent'".
+        Pipeline.create(name="r", steps=steps, start_step="work", instructions_dir="/i", db_config="x.db")
+
 
 class TestStepExecutionResult:
     """Tests for StepExecutionResult dataclass."""

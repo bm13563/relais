@@ -241,6 +241,21 @@ class PipelineOrchestrator:
                 current_step_name = step.resolve_next({})
                 continue
 
+            # Route (pass-through) step: no LLM. Run hooks, merge their dicts into
+            # routing data, and resolve the next step from it. For cheap, deterministic
+            # branching (e.g. "is the session finished?") that needs no reasoning.
+            if step.route:
+                hook_results = await step.get_hook_data()
+                routing_data = {}
+                for hr in hook_results:
+                    if isinstance(hr, dict):
+                        routing_data.update(hr)
+                next_step_name = step.resolve_next(routing_data)
+                self.log.info("route", run=run_id, step=current_step_name, data=routing_data, next=next_step_name)
+                previous_result = routing_data
+                current_step_name = next_step_name
+                continue
+
             agent_name = step.agent.name
             agent = run_agents.get(agent_name)
             if agent is not None and agent.is_expired():
