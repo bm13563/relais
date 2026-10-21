@@ -5,6 +5,7 @@ description = "A framework for building multi-step AI agent pipelines"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "anthropic>=1.17.0",
     "claude-agent-sdk>=0.2.0",
     "spool @ git+https://github.com/bm13563/spool.git",
 ]
