@@ -466,6 +466,7 @@ class PipelineOrchestrator:
         result_text = None
         result_subtype = None
         session_id = None
+        text_blocks = 0  # text content blocks seen this step — a new one is a new paragraph
 
         async for message in client.receive_response():
             # Every SDK message that knows the session names it; the last word wins.
@@ -486,9 +487,16 @@ class PipelineOrchestrator:
                             print(f"\n[{step.name}] Tool: {block.name}  {block.input}")
             elif isinstance(message, StreamEvent):
                 # A raw API stream event (only with include_partial_messages):
-                # the text deltas are what a host streams to its user.
+                # the text deltas are what a host streams to its user. The model's
+                # prose comes in BLOCKS around its tool calls; a host that joins
+                # the deltas would glue "…the SOC launch.Three of the…" — so a
+                # new text block after the first is a paragraph break.
                 ev = message.event
-                if ev.get("type") == "content_block_delta" and ev.get("delta", {}).get("type") == "text_delta":
+                if ev.get("type") == "content_block_start" and ev.get("content_block", {}).get("type") == "text":
+                    if text_blocks:
+                        await self._emit({"type": "text_delta", "step": step.name, "text": "\n\n"})
+                    text_blocks += 1
+                elif ev.get("type") == "content_block_delta" and ev.get("delta", {}).get("type") == "text_delta":
                     await self._emit({"type": "text_delta", "step": step.name, "text": ev["delta"]["text"]})
             elif isinstance(message, SystemMessage):
                 if message.subtype == "init":
