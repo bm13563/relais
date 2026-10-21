@@ -42,8 +42,15 @@ class PipelineAgent:
                then calls its response tool uses ~3 turns. Set lower to keep a
                step on a tight leash; raise it for agents that iterate.
         model: Model for this agent (opus, sonnet, haiku — or a full model id).
-        thinking: Enable extended thinking for this agent (sdk: a thinking-token
-               budget; api: adaptive thinking).
+        thinking: Extended thinking, tri-state (default None):
+               None — leave it to the model's default (send nothing). Note
+               that the 5.x models think adaptively by default: on the api
+               engine None does NOT mean no thinking.
+               True — on: sdk, a thinking-token budget; api, adaptive thinking
+               ({"type": "adaptive"}).
+               False — off: api, {"type": "disabled"}; sdk, nothing set (as
+               None). Claude Opus 5.5 rejects disabled thinking (a 400) — an
+               api agent on it must not pass False; lower `effort` instead.
         engine: What this agent's steps run on (default "sdk"):
                "sdk" — a Claude Code CLI subprocess, driven by the Claude Agent SDK;
                "api" — in-process on the Anthropic Messages API (relais.engines).
@@ -88,7 +95,7 @@ class PipelineAgent:
     steps: Optional[int] = None
     max_turns: int = 10
     model: Optional[str] = "opus"
-    thinking: Optional[bool] = False
+    thinking: Optional[bool] = None
     permission_mode: str = "acceptEdits"
     effort: Optional[str] = None
     resume: Optional[str] = None

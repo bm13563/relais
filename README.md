@@ -253,7 +253,14 @@ model's memory of the earlier conversation is dropped, and an info line is logge
 the CLI's setting sources, which relais always switches off). Everything else applies on
 both: `model` (the api engine maps `opus` / `sonnet` / `haiku` to `claude-opus-5-5` /
 `claude-sonnet-5-5` / `claude-haiku-5-5`; any other value is sent as a model id),
-`max_turns`, `thinking` (api: adaptive thinking), `effort`, `resume`, `steps`, `tools`.
+`max_turns`, `thinking`, `effort`, `resume`, `steps`, `tools`.
+
+`thinking` is a tri-state. `None` (the default) sends nothing and leaves it to the
+model — and the 5.x models think adaptively by default, so on the api engine `None` is
+not "no thinking". `True` turns it on (sdk: a thinking-token budget; api: adaptive
+thinking). `False` turns it off on the api engine (`{"type": "disabled"}`; the sdk engine
+sets nothing, as for `None`). Claude Opus 5.5 rejects disabled thinking, so an agent on it
+must not pass `False` — lower `effort` instead.
 
 The api engine streams each model turn, so `astream()` sees the same `text_delta` and
 `tool_use` events, plus a `usage` event after every turn; every engine reports a step's
@@ -427,7 +434,7 @@ PipelineAgent(
     steps: int = None,                  # None = persists all run; N = expire after N steps
     max_turns: int = 10,                # Max model round-trips per step
     model: str = "opus",                # Model (opus, sonnet, haiku — or a model id)
-    thinking: bool = False,             # Enable extended thinking
+    thinking: bool = None,              # None = model default; True = on; False = off (api; not Opus 5.5)
     engine: str = "sdk",                # "sdk" (Claude Code CLI) or "api" (Messages API) — see Engines
     permission_mode: str = "acceptEdits",  # sdk only: permission mode for built-in tools
     effort: str = None,                 # Reasoning effort (low … max); None = default

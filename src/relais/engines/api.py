@@ -68,7 +68,8 @@ API_SYSTEM_PROMPT = """You are one step of a relais pipeline: an automated workf
 - Verify before you claim: say what the tools actually showed you, and say so when you could not check something.
 - When the step's work is done, call the step's response tool exactly once, as your last act: the step ends there. Its output is the only thing passed on.
 - The step is complete only when its response tool has been called: ending your turn without calling it fails the step.
-- When the run is streamed, the prose you write is shown to the person as it streams — the step tells you when it is. Write it for them."""
+- When the run is streamed, the prose you write is shown to the person as it streams — the step tells you when it is. Write it for them.
+- Your thinking is private: nobody sees it. Anything the person should read, write as text."""
 
 # PipelineAgent.model aliases; anything else is passed through as a model id.
 MODEL_ALIASES = {
@@ -303,8 +304,10 @@ def _request(agent: PipelineAgent, model: str, offered: list[dict], messages: li
     }
     if offered:
         request["tools"] = offered[:-1] + [{**offered[-1], "cache_control": CACHE}]
-    if agent.thinking:
-        request["thinking"] = {"type": "adaptive"}
+    # Tri-state: None sends nothing (the model's default — the 5.x models
+    # think adaptively), True adaptive, False disabled (Opus 5.5 rejects it).
+    if agent.thinking is not None:
+        request["thinking"] = {"type": "adaptive" if agent.thinking else "disabled"}
     if agent.effort:
         request["output_config"] = {"effort": agent.effort}
     return request

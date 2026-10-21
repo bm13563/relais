@@ -18,7 +18,7 @@ class TestPipelineAgentCreation:
         assert agent.steps_remaining is None
         assert agent.max_turns == 10  # Default turn budget
         assert agent.model == "opus"
-        assert agent.thinking is False
+        assert agent.thinking is None  # the model's default
         assert agent.engine == "sdk"
         assert agent.client is None
 
@@ -101,6 +101,11 @@ class TestAgentEquality:
 
     def test_agents_with_different_names_not_equal(self):
         assert PipelineAgent(name="agent1") != PipelineAgent(name="agent2")
+
+    def test_thinking_none_is_its_own_value(self):
+        assert PipelineAgent(name="a") == PipelineAgent(name="a", thinking=None)
+        assert PipelineAgent(name="a") != PipelineAgent(name="a", thinking=False)
+        assert PipelineAgent(name="a", thinking=False) != PipelineAgent(name="a", thinking=True)
 
     def test_agents_with_different_model_not_equal(self):
         a = PipelineAgent(name="agent", model="opus")

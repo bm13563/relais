@@ -366,13 +366,28 @@ class TestRequest:
         assert "thinking" not in request
         assert "output_config" not in request
 
-    async def test_thinking_and_effort(self, stub, state, registry):
+    async def test_effort(self, stub, state, registry):
         stub.messages.turns = answered("ok")
-        await run(ApiEngine(state_manager=state), make_agent("a", thinking=True, effort="high"), registry)
+        await run(ApiEngine(state_manager=state), make_agent("a", effort="high"), registry)
+        assert stub.messages.requests[0]["output_config"] == {"effort": "high"}
+
+    @pytest.mark.parametrize("thinking,sent", [
+        (None, None),                      # the model's default: no field at all
+        (True, {"type": "adaptive"}),
+        (False, {"type": "disabled"}),
+    ])
+    async def test_thinking_is_a_tri_state(self, stub, state, registry, thinking, sent):
+        stub.messages.turns = answered("ok")
+        await run(ApiEngine(state_manager=state), make_agent("a", thinking=thinking), registry)
 
         request = stub.messages.requests[0]
-        assert request["thinking"] == {"type": "adaptive"}
-        assert request["output_config"] == {"effort": "high"}
+        if sent is None:
+            assert "thinking" not in request
+        else:
+            assert request["thinking"] == sent
+
+    async def test_the_system_prompt_says_thinking_is_private(self):
+        assert "Your thinking is private: nobody sees it. Anything the person should read, write as text." in API_SYSTEM_PROMPT
 
     @pytest.mark.parametrize("model,resolved", [
         ("opus", "claude-opus-5-5"),

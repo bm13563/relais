@@ -147,6 +147,12 @@ class TestOptions:
         assert options.tools == []
 
 
+    @pytest.mark.parametrize("thinking", [None, False])
+    async def test_thinking_off_or_default_sets_no_budget(self, fake_client, registry, thinking):
+        await run(SdkEngine(), PipelineAgent(name="a", thinking=thinking), registry, script=[result_message()])
+        assert fake_client.instances[0].options.max_thinking_tokens is None
+
+
 class TestClientLifecycle:
     async def test_one_client_per_agent_reused_across_steps(self, fake_client, registry):
         engine = SdkEngine()
