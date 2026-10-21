@@ -5,6 +5,7 @@ using the Claude Agent SDK.
 """
 
 from __future__ import annotations
+import asyncio
 from pathlib import Path
 from typing import Dict
 
@@ -263,6 +264,61 @@ class Pipeline:
             initial_input=initial_input,
             args=args,
         )
+
+    async def astream(self, initial_input: str, args: dict = None):
+        """Run the pipeline and yield its events as they happen.
+
+        The streaming twin of arun(), for a host that shows the work live (a
+        chat surface). Yields dicts, in order:
+
+          {"type": "step_start", "run", "step", "agent"}  a step began on its agent
+          {"type": "text_delta", "step", "text"}         a piece of the model's prose
+          {"type": "tool_use", "step", "name", "input"}  a tool the model called
+          {"type": "step_done", "run", "step", "routing_data", "session_id",
+                                 "turns", "next"}         a step finished
+          {"type": "run_done", "run", "output", "session_id"}
+                                                        the run finished: `output` is
+                                                        the final step's routing data,
+                                                        `session_id` the Claude Code
+                                                        session to resume it with
+
+        An error in the run is raised from the iterator. Build one Pipeline per
+        streaming run: the orchestrator holds one event sink at a time.
+        """
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def on_event(event: dict) -> None:
+            await queue.put(event)
+
+        async def run() -> None:
+            try:
+                run_id = await self.orchestrator.start_pipeline_async(
+                    pipeline_name=self.name, initial_input=initial_input, args=args,
+                )
+                state = self.get_run(run_id)
+                final = state.step_results.get(state.current_step) or {}
+                await queue.put({
+                    "type": "run_done", "run": run_id,
+                    "output": final.get("routing_data"), "session_id": final.get("session_id"),
+                })
+            except Exception as e:  # re-raised to the consumer below
+                await queue.put(e)
+
+        self.orchestrator._on_event = on_event
+        task = asyncio.create_task(run())
+        try:
+            while True:
+                item = await queue.get()
+                if isinstance(item, Exception):
+                    raise item
+                yield item
+                if item.get("type") == "run_done":
+                    break
+        finally:
+            self.orchestrator._on_event = None
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     def start_conversation(self, args: dict = None):
         """Begin a conversational run of this pipeline.

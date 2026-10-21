@@ -344,6 +344,8 @@ Pipeline.create(
 
 pipeline.run(initial_input: str, args: dict = None) -> str          # sync; returns run_id
 await pipeline.arun(initial_input: str, args: dict = None) -> str   # the same, from a running event loop
+async for event in pipeline.astream(initial_input, args)            # the run's events as they happen:
+                                                                     # step_start, text_delta, tool_use, step_done, run_done
 pipeline.get_run(run_id: str) -> PipelineRunState
 pipeline.start_conversation(args: dict = None) -> Conversation       # docs/conversations.md
 pipeline.initialize_db()
@@ -357,6 +359,8 @@ Model and turn budget are configured on the agent, not on `Pipeline.create`.
 PipelineStep(
     name: str,                          # Step identifier
     instruction: str,                   # Instruction file name (without .md)
+    instruction_text: str = None,       # The instruction inline instead (no file read)
+    max_visits: int = None,             # Cap on entries per run; past it, the default route
     response_tool: str,                 # Required: tool whose output is captured + routed
     tools: List[Union[str, Callable]] = [],  # Tools available for this step (enforced)
     hooks: List[Callable] = [],         # Context injection functions (sync or async)

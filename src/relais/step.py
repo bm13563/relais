@@ -20,6 +20,9 @@ class PipelineStep:
     Attributes:
         name: Unique identifier for this step
         instruction: Name of the instruction file (without .md extension)
+        instruction_text: The instruction itself, inline. A host that composes its
+                       prompts in code hands the text here and no file is read;
+                       `instruction` then only names the step in logs.
         response_tool: Name of the tool that provides this step's structured output.
                        Required. The output of this tool becomes routing_data, which
                        is used for routing decisions and passed to the next step.
@@ -33,6 +36,10 @@ class PipelineStep:
               - {"field": "field_name", "routes": [...], "default": "fallback"}
                 for conditional routing based on tool result
         agent: PipelineAgent instance to use for this step.
+        max_visits: How many times one run may ENTER this step (None = no cap).
+                    Past the cap the step is skipped and its `default` route taken —
+                    the guard that bounds a revise-and-re-check loop (a critic step
+                    routing back to an analyst) without the agents having to count.
         await_input: If True, the run suspends after this step and returns control
                      to the caller (a conversational pipeline). The caller's next
                      continue_conversation(text) resumes: the text becomes the input
@@ -43,12 +50,14 @@ class PipelineStep:
     """
     name: str
     instruction: str
+    instruction_text: Optional[str] = None
     response_tool: str = ""  # Name of the tool that provides this step's output
     tools: List[Union[str, Callable]] = field(default_factory=list)
     hooks: List[Callable[[], Any]] = field(default_factory=list)
     next: dict = field(default_factory=lambda: {"default": None})
     agent: Optional['PipelineAgent'] = None
     await_input: bool = False
+    max_visits: Optional[int] = None
     route: bool = False  # Pass-through: run hooks, route on their data, NO LLM call.
 
     def __post_init__(self):

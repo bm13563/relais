@@ -22,6 +22,8 @@ from claude_agent_sdk import (
     ResultMessage,
     TextBlock,
     ToolUseBlock,
+    StreamEvent,
+    SystemMessage,
 )
 
 from .step import PipelineStep
@@ -94,6 +96,9 @@ class StepExecutionResult:
     turns_used: int
     stop_reason: str  # 'success' or 'error'
     routing_data: Optional[dict] = None
+    # The Claude Code session the step ran in — what a host passes back as
+    # PipelineAgent.resume to continue the conversation on a later run.
+    session_id: Optional[str] = None
 
 
 class PipelineOrchestrator:
@@ -122,6 +127,10 @@ class PipelineOrchestrator:
         self.pipelines: Dict[str, PipelineConfig] = {}
         # Replaced with a per-pipeline logger in register_pipeline().
         self.log = get_logger("relais")
+        # The run's event sink while Pipeline.astream() drives it (None otherwise):
+        # an async callable that receives text_delta / tool_use / step_done events
+        # as they happen. One streaming run at a time per orchestrator.
+        self._on_event = None
 
     def register_pipeline(self, config: PipelineConfig) -> None:
         """Register a pipeline configuration."""
@@ -249,11 +258,21 @@ class PipelineOrchestrator:
         previous_result = None
         last_output = None
         last_step_name = None
+        visits: Dict[str, int] = {}
 
         while current_step_name:
             step = config.steps.get(current_step_name)
             if not step:
                 raise ValueError(f"Step not found: {current_step_name}")
+
+            # The visit cap (max_visits): past it, the step is skipped and its
+            # default route taken — a bounded loop, decided here, not by an agent.
+            visits[current_step_name] = visits.get(current_step_name, 0) + 1
+            if step.max_visits is not None and visits[current_step_name] > step.max_visits:
+                next_name = step.next.get("default") if isinstance(step.next, dict) else None
+                self.log.info("visit_cap", run=run_id, step=current_step_name, visits=visits[current_step_name], next=next_name)
+                current_step_name = next_name
+                continue
 
             # Pure-park await step (no agent): it runs nothing; it just establishes
             # the wait. Only meaningful as an entry/standalone suspension point.
@@ -307,6 +326,7 @@ class PipelineOrchestrator:
             )
             self.log.debug("step_context", run=run_id, step=current_step_name, context=context)
 
+            await self._emit({"type": "step_start", "run": run_id, "step": current_step_name, "agent": agent_name})
             result = await self._execute_step(
                 step=step, context=context, mcp_server=mcp_server, agent=agent, images=images,
             )
@@ -327,8 +347,14 @@ class PipelineOrchestrator:
                     'stop_reason': result.stop_reason,
                     'routing_data': routing_data,
                     'final_response': result.final_response,
+                    'session_id': result.session_id,
                 },
             )
+            await self._emit({
+                "type": "step_done", "run": run_id, "step": current_step_name,
+                "routing_data": routing_data, "session_id": result.session_id,
+                "turns": result.turns_used, "next": next_step_name,
+            })
 
             agent.consume_step()
             if agent.is_expired() and agent.has_client():
@@ -393,6 +419,10 @@ class PipelineOrchestrator:
                 # here in code, not by the ambient machine's Claude Code settings.
                 "setting_sources": [],
             }
+            if self._on_event is not None:
+                # Streaming: the SDK then yields a StreamEvent per API stream
+                # event, which is where text deltas come from.
+                options_kwargs["include_partial_messages"] = True
             if thinking:
                 options_kwargs["max_thinking_tokens"] = 60000
             if agent.effort:
@@ -429,8 +459,11 @@ class PipelineOrchestrator:
         is_error = False
         error_kind = None
         result_text = None
+        session_id = None
 
         async for message in client.receive_response():
+            # Every SDK message that knows the session names it; the last word wins.
+            session_id = getattr(message, "session_id", None) or session_id
             if isinstance(message, AssistantMessage):
                 if message.error:
                     error_kind = message.error
@@ -442,8 +475,18 @@ class PipelineOrchestrator:
                     elif isinstance(block, ToolUseBlock):
                         self.log.debug("tool_call", step=step.name, tool=block.name, input=block.input)
                         tool_results.append({"id": block.id, "tool": block.name, "input": block.input})
+                        await self._emit({"type": "tool_use", "step": step.name, "name": block.name, "input": block.input})
                         if self._verbose:
                             print(f"\n[{step.name}] Tool: {block.name}  {block.input}")
+            elif isinstance(message, StreamEvent):
+                # A raw API stream event (only with include_partial_messages):
+                # the text deltas are what a host streams to its user.
+                ev = message.event
+                if ev.get("type") == "content_block_delta" and ev.get("delta", {}).get("type") == "text_delta":
+                    await self._emit({"type": "text_delta", "step": step.name, "text": ev["delta"]["text"]})
+            elif isinstance(message, SystemMessage):
+                if message.subtype == "init":
+                    session_id = message.data.get("session_id") or session_id
             elif isinstance(message, ResultMessage):
                 turns_used = message.num_turns
                 is_error = message.is_error
@@ -473,7 +516,13 @@ class PipelineOrchestrator:
             turns_used=turns_used,
             stop_reason='error' if is_error else 'success',
             routing_data=routing_data,
+            session_id=session_id,
         )
+
+    async def _emit(self, event: dict) -> None:
+        """Hand an event to the streaming sink, if a stream is listening."""
+        if self._on_event is not None:
+            await self._on_event(event)
 
     @property
     def _verbose(self) -> bool:
@@ -507,11 +556,14 @@ class PipelineOrchestrator:
         if hook_data:
             sections.append(f"[Hook Data]\n{json.dumps(hook_data, indent=2)}")
 
-        instruction_path = instructions_dir / f"{step.instruction}.md"
-        if instruction_path.exists():
-            sections.append(f"[Instructions]\n{instruction_path.read_text()}")
+        if step.instruction_text is not None:
+            sections.append(f"[Instructions]\n{step.instruction_text}")
         else:
-            self.log.warning("instruction_missing", step=step.name, path=str(instruction_path))
+            instruction_path = instructions_dir / f"{step.instruction}.md"
+            if instruction_path.exists():
+                sections.append(f"[Instructions]\n{instruction_path.read_text()}")
+            else:
+                self.log.warning("instruction_missing", step=step.name, path=str(instruction_path))
 
         tool_names = _tool_names(step.tools)
         if tool_names:
