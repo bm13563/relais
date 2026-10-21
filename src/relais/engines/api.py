@@ -59,12 +59,15 @@ log = get_logger("relais")
 
 
 # The system prompt of every request. Frozen — it heads the cached prefix, and a
-# thinking block is bound to the prefix it was produced under.
+# thinking block is bound to the prefix it was produced under. It is part of every
+# transcript's prefix hash (see _prefix): editing it changes every prefix, so every
+# resumed transcript begins afresh once — expected, and fine.
 API_SYSTEM_PROMPT = """You are one step of a relais pipeline: an automated workflow in which a series of agents each do one focused part of a larger task and hand their result on. The user message describes your step — its input, its instructions, the tools you may use, and the response tool that completes it.
 
 - Work in turns: call a tool, read its result, decide what to do next. Call one tool at a time.
 - Verify before you claim: say what the tools actually showed you, and say so when you could not check something.
 - When the step's work is done, call the step's response tool exactly once, as your last act. Its output is the only thing passed on.
+- The step is complete only when its response tool has been called: ending your turn without calling it fails the step.
 - When the run is streamed, the prose you write is shown to the person as it streams — the step tells you when it is. Write it for them."""
 
 # PipelineAgent.model aliases; anything else is passed through as a model id.
@@ -165,6 +168,7 @@ class ApiEngine:
         error_kind = None
         result_text = None
         usage = dict.fromkeys(USAGE_KEYS, 0)
+        nudged = False
 
         try:
             while True:
@@ -199,7 +203,17 @@ class ApiEngine:
                         })
                     break
                 if not calls:
-                    break  # end_turn: the model is done
+                    # end_turn. The step is complete only once its response tool
+                    # has run: a model that answered in prose and stopped gets ONE
+                    # reminder and another turn, if the turn cap allows. The
+                    # reminder stays in the transcript like any other user message
+                    # (it must stay append-only — thinking is bound to it).
+                    if (not nudged and turns_used < agent.max_turns
+                            and registry.get_tool_result(step.response_tool) is None):
+                        nudged = True
+                        transcript.messages.append({"role": "user", "content": _nudge(step.response_tool)})
+                        continue
+                    break  # the model is done
 
                 results = []
                 for block in calls:
@@ -348,6 +362,14 @@ def _tool_result(tool_use_id: str, result: dict) -> dict:
     if result.get("is_error"):
         tool_result["is_error"] = True
     return tool_result
+
+
+def _nudge(response_tool: str) -> str:
+    """The one reminder for a model that ended its turn without the response tool."""
+    return (
+        f"You ended your turn without calling {response_tool}, which completes this step. "
+        f"Call it now with your result; nothing else is passed on."
+    )
 
 
 def _not_run(tool_use_id: str, stop_reason: str) -> dict:

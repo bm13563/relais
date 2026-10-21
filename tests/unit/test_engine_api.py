@@ -127,6 +127,16 @@ def call(tool_id, name, tool_input=None):
     return ToolUseBlock(type="tool_use", id=tool_id, name=name, input=tool_input or {})
 
 
+def answer(category="q", tool_id="tr"):
+    """The model calling the step's response tool (classify)."""
+    return call(tool_id, "classify", {"category": category})
+
+
+def answered(final="Done."):
+    """A well-behaved step's script: the response tool, then a closing reply."""
+    return [turn(answer()), turn(text(final))]
+
+
 def api_error(cls, status):
     request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
     return cls(f"{status} from the API", response=httpx2.Response(status, request=request), body=None)
@@ -170,8 +180,8 @@ def make_agent(name="a", tools=("lookup", "classify"), **kwargs):
     return PipelineAgent(name=name, tools=list(tools), **kwargs)
 
 
-def make_step(agent, tools=("lookup", "classify"), name="s1"):
-    return PipelineStep(name=name, instruction="x", response_tool="classify", tools=list(tools), agent=agent)
+def make_step(agent, tools=("lookup", "classify"), name="s1", response_tool="classify"):
+    return PipelineStep(name=name, instruction="x", response_tool=response_tool, tools=list(tools), agent=agent)
 
 
 async def run(engine, agent, registry, *, step=None, prompt="Classify this.", images=(), emit=None):
@@ -218,7 +228,7 @@ class TestTextAndEvents:
         assert outcome.is_error is False and outcome.error_kind is None
 
     async def test_no_sink_no_events(self, stub, state, registry):
-        stub.messages.turns = [turn(text("Hi."))]
+        stub.messages.turns = answered("Hi.")
         outcome = await run(ApiEngine(state_manager=state), make_agent("a"), registry)
         assert outcome.final_text == "Hi."
 
@@ -227,12 +237,15 @@ class TestTools:
     async def test_a_tool_call_runs_through_the_registry(self, stub, state, registry):
         stub.messages.turns = [
             turn(call("t1", "lookup", {"query": "the weather"})),
-            turn(text("Sunny.")),
+            *answered("Sunny."),
         ]
         agent = make_agent("a")
         outcome = await run(ApiEngine(state_manager=state), agent, registry)
 
-        assert outcome.tool_calls == [{"id": "t1", "tool": "lookup", "input": {"query": "the weather"}}]
+        assert outcome.tool_calls == [
+            {"id": "t1", "tool": "lookup", "input": {"query": "the weather"}},
+            {"id": "tr", "tool": "classify", "input": {"category": "q"}},
+        ]
         # The second turn was sent the tool's result, as one user message.
         second = stub.messages.requests[1]["messages"]
         assert second[-1] == {"role": "user", "content": [
@@ -243,7 +256,7 @@ class TestTools:
     async def test_a_tool_outside_the_agents_set_is_refused_as_an_error(self, stub, state, registry):
         """The model can't name a tool the request didn't offer — but if it does,
         the registry's refusal goes back as an error result and nothing runs."""
-        stub.messages.turns = [turn(call("t1", "secret")), turn(text("ok"))]
+        stub.messages.turns = [turn(call("t1", "secret")), *answered("ok")]
         await run(ApiEngine(state_manager=state), make_agent("a"), registry)
 
         [result] = stub.messages.requests[1]["messages"][-1]["content"]
@@ -262,7 +275,7 @@ class TestTools:
         assert result == {"content": [{"type": "text", "text": '{"category": "question"}'}]}
 
     async def test_image_results_become_image_blocks(self, stub, state, registry):
-        stub.messages.turns = [turn(call("t1", "screenshot")), turn(text("I see it."))]
+        stub.messages.turns = [turn(call("t1", "screenshot")), *answered("I see it.")]
         agent = make_agent("a", tools=["screenshot", "classify"])
         await run(ApiEngine(state_manager=state), agent, registry, step=make_step(agent, tools=["screenshot", "classify"]))
 
@@ -281,7 +294,8 @@ class TestTools:
 
         stub.messages.turns = [turn(call("t1", "flaky")), turn(text("It failed."))]
         agent = make_agent("a", tools=["flaky"])
-        await run(ApiEngine(state_manager=state), agent, registry, step=make_step(agent, tools=["flaky"]))
+        await run(ApiEngine(state_manager=state), agent, registry,
+                  step=make_step(agent, tools=["flaky"], response_tool="flaky"))
 
         [result] = stub.messages.requests[1]["messages"][-1]["content"]
         assert result == {"type": "tool_result", "tool_use_id": "t1", "is_error": True,
@@ -297,7 +311,7 @@ class TestRequest:
     async def test_the_agents_tools_are_offered_and_the_step_gates_them(self, stub, state, registry):
         """Every request offers the agent's whole tool set; a call to one outside
         the current step gets the wrapper's refusal and its body never runs."""
-        stub.messages.turns = [turn(call("t1", "secret")), turn(text("ok"))]
+        stub.messages.turns = [turn(call("t1", "secret")), *answered("ok")]
         agent = make_agent("a", tools=["lookup", "classify", "secret"])
         await run(ApiEngine(state_manager=state), agent, registry, step=make_step(agent, tools=["lookup", "classify"]))
 
@@ -319,24 +333,25 @@ class TestRequest:
     async def test_the_offered_tools_are_the_same_on_every_step(self, stub, state, registry):
         """Steps that list different tools still send one tools prefix — the one
         the agent's thinking blocks are bound to."""
-        stub.messages.turns = [turn(text("one")), turn(text("two"))]
+        stub.messages.turns = [*answered("one"), *answered("two")]
         engine = ApiEngine(state_manager=state)
         agent = make_agent("a", tools=["lookup", "classify", "screenshot"])
         await run(engine, agent, registry, step=make_step(agent, tools=["lookup", "classify"]))
         await run(engine, agent, registry, step=make_step(agent, tools=["screenshot", "classify"], name="s2"))
 
-        first, second = stub.messages.requests
-        assert first["tools"] == second["tools"]
-        assert first["system"] == second["system"]
+        requests = stub.messages.requests
+        assert len(requests) == 4
+        assert all(r["tools"] == requests[0]["tools"] and r["system"] == requests[0]["system"] for r in requests)
 
     async def test_a_tool_without_parameters_gets_an_object_schema(self, stub, state, registry):
-        stub.messages.turns = [turn(text("ok"))]
+        stub.messages.turns = [turn(call("t1", "screenshot")), turn(text("ok"))]
         agent = make_agent("a", tools=["screenshot"])
-        await run(ApiEngine(state_manager=state), agent, registry, step=make_step(agent, tools=["screenshot"]))
+        await run(ApiEngine(state_manager=state), agent, registry,
+                  step=make_step(agent, tools=["screenshot"], response_tool="screenshot"))
         assert stub.messages.requests[0]["tools"][0]["input_schema"] == {"type": "object", "properties": {}}
 
     async def test_the_request_shape(self, stub, state, registry):
-        stub.messages.turns = [turn(text("ok"))]
+        stub.messages.turns = answered("ok")
         await run(ApiEngine(state_manager=state), make_agent("a"), registry, prompt="The step's prompt.")
 
         request = stub.messages.requests[0]
@@ -349,7 +364,7 @@ class TestRequest:
         assert "output_config" not in request
 
     async def test_thinking_and_effort(self, stub, state, registry):
-        stub.messages.turns = [turn(text("ok"))]
+        stub.messages.turns = answered("ok")
         await run(ApiEngine(state_manager=state), make_agent("a", thinking=True, effort="high"), registry)
 
         request = stub.messages.requests[0]
@@ -364,12 +379,12 @@ class TestRequest:
         ("claude-fable-5-1", "claude-fable-5-1"),
     ])
     async def test_model_aliases(self, stub, state, registry, model, resolved):
-        stub.messages.turns = [turn(text("ok"))]
+        stub.messages.turns = answered("ok")
         await run(ApiEngine(state_manager=state), make_agent("a", model=model), registry)
         assert stub.messages.requests[0]["model"] == resolved
 
     async def test_images_ride_in_the_user_message(self, stub, state, registry):
-        stub.messages.turns = [turn(text("A cat."))]
+        stub.messages.turns = answered("A cat.")
         await run(ApiEngine(state_manager=state), make_agent("a"), registry, prompt="What is this?",
                   images=["AAA", "BBB"])
 
@@ -445,10 +460,67 @@ class TestStops:
         assert outcome.tool_calls == [{"id": "t1", "tool": "lookup", "input": {"query": "x"}}]
 
 
+NUDGE = ("You ended your turn without calling classify, which completes this step. "
+         "Call it now with your result; nothing else is passed on.")
+
+
+class TestNudge:
+    """A reply that ends the turn without the response tool gets ONE reminder."""
+
+    async def test_an_end_turn_without_the_response_tool_is_nudged(self, stub, state, registry):
+        stub.messages.turns = [turn(text("It's a question.")), turn(answer("question")), turn(text("Done."))]
+        agent = make_agent("a")
+        outcome = await run(ApiEngine(state_manager=state), agent, registry)
+
+        assert len(stub.messages.requests) == 3
+        assert stub.messages.requests[1]["messages"][-1] == {"role": "user", "content": NUDGE}
+        assert registry.get_tool_result("classify")[1] == {"content": [{"type": "text", "text": '{"category": "question"}'}]}
+        assert (outcome.is_error, outcome.turns_used, outcome.final_text) == (False, 3, "Done.")
+        # Kept in the transcript like any other user message (append-only).
+        saved, _ = state.load_transcript(outcome.session_id)
+        assert saved.count({"role": "user", "content": NUDGE}) == 1
+
+    async def test_a_second_end_turn_without_it_ends_the_step(self, stub, state, registry):
+        stub.messages.turns = [turn(text("A.")), turn(text("B.")), turn(text("never sent"))]
+        agent = make_agent("a")
+        outcome = await run(ApiEngine(state_manager=state), agent, registry)
+
+        assert len(stub.messages.requests) == 2
+        assert (outcome.is_error, outcome.turns_used, outcome.final_text) == (False, 2, "B.")
+        assert registry.get_tool_result("classify") is None  # the executor fails the step, as before
+        assert agent.client.messages.count({"role": "user", "content": NUDGE}) == 1
+        assert agent.client.messages[-1]["role"] == "assistant"
+
+    async def test_a_step_whose_response_tool_ran_is_not_nudged(self, stub, state, registry):
+        stub.messages.turns = answered("Done.")
+        agent = make_agent("a")
+        await run(ApiEngine(state_manager=state), agent, registry)
+
+        assert len(stub.messages.requests) == 2
+        assert {"role": "user", "content": NUDGE} not in agent.client.messages
+
+    async def test_no_nudge_once_the_turns_are_spent(self, stub, state, registry):
+        stub.messages.turns = [turn(text("A.")), turn(text("never sent"))]
+        agent = make_agent("a", max_turns=1)
+        outcome = await run(ApiEngine(state_manager=state), agent, registry)
+
+        assert len(stub.messages.requests) == 1
+        assert outcome.turns_used == 1
+        assert {"role": "user", "content": NUDGE} not in agent.client.messages
+
+    async def test_the_nudged_turn_counts_toward_max_turns(self, stub, state, registry):
+        stub.messages.turns = [turn(text("A.")), turn(answer()), turn(text("never sent"))]
+        outcome = await run(ApiEngine(state_manager=state), make_agent("a", max_turns=2), registry)
+
+        assert len(stub.messages.requests) == 2
+        assert outcome.error_kind == "max_turns"
+        assert registry.get_tool_result("classify") is not None  # answered in the last allowed turn
+
+
 class TestUsage:
     async def test_usage_is_summed_and_reported_per_turn(self, stub, state, registry):
         stub.messages.turns = [
-            turn(call("t1", "lookup", {"query": "x"}), usage=(100, 20, 0, 900)),
+            turn(answer(), usage=(100, 20, 0, 900)),
             turn(text("Done."), usage=(30, 10, 900, 40)),
         ]
         events = []
@@ -470,7 +542,7 @@ class TestUsage:
 
 class TestTranscript:
     async def test_the_transcript_is_reused_across_an_agents_steps(self, stub, state, registry):
-        stub.messages.turns = [turn(text("One.")), turn(text("Two."))]
+        stub.messages.turns = [*answered("One."), *answered("Two.")]
         engine = ApiEngine(state_manager=state)
         agent = make_agent("a")
 
@@ -478,11 +550,12 @@ class TestTranscript:
         second = await run(engine, agent, registry, step=make_step(agent, name="s2"), prompt="Step two.")
 
         assert first.session_id == second.session_id == agent.client.id
-        assert stub.messages.requests[1]["messages"] == [
-            {"role": "user", "content": "Step one."},
-            {"role": "assistant", "content": [{"type": "text", "text": "One."}]},
-            {"role": "user", "content": "Step two."},
-        ]
+        # Step two's first request carries step one's whole exchange, then its prompt.
+        sent = stub.messages.requests[2]["messages"]
+        assert [m["role"] for m in sent] == ["user", "assistant", "user", "assistant", "user"]
+        assert sent[0] == {"role": "user", "content": "Step one."}
+        assert sent[3] == {"role": "assistant", "content": [{"type": "text", "text": "One."}]}
+        assert sent[4] == {"role": "user", "content": "Step two."}
 
     async def test_saved_after_every_step_and_resumed_under_the_same_prefix(self, stub, state, registry):
         stub.messages.turns = [turn(call("t1", "classify", {"category": "q"})), turn(text("Classified."))]
@@ -494,16 +567,16 @@ class TestTranscript:
         assert saved[1]["content"] == [{"type": "tool_use", "id": "t1", "name": "classify", "input": {"category": "q"}}]
 
         # A later run: a fresh engine and agent resume the transcript by its id.
-        stub.messages.turns = [turn(text("You asked me to classify."))]
+        stub.messages.turns = answered("You asked me to classify.")
         resumed = make_agent("a", resume=outcome.session_id)
         later = await run(ApiEngine(state_manager=state), resumed, registry, prompt="What did I ask?")
 
         assert later.session_id == outcome.session_id
-        assert stub.messages.requests[-1]["messages"] == saved + [{"role": "user", "content": "What did I ask?"}]
-        assert state.load_transcript(outcome.session_id) == (saved + [
-            {"role": "user", "content": "What did I ask?"},
-            {"role": "assistant", "content": [{"type": "text", "text": "You asked me to classify."}]},
-        ], prefix)
+        assert stub.messages.requests[2]["messages"] == saved + [{"role": "user", "content": "What did I ask?"}]
+        messages, still = state.load_transcript(outcome.session_id)
+        assert still == prefix
+        assert messages[:5] == saved + [{"role": "user", "content": "What did I ask?"}]
+        assert messages[-1] == {"role": "assistant", "content": [{"type": "text", "text": "You asked me to classify."}]}
 
     async def test_saved_when_the_step_errors(self, stub, state, registry):
         stub.messages.turns = [api_error(anthropic.RateLimitError, 429)]
@@ -511,7 +584,7 @@ class TestTranscript:
         assert state.load_transcript(outcome.session_id)[0] == [{"role": "user", "content": "Go."}]
 
     async def test_an_unknown_transcript_begins_afresh_under_its_id(self, stub, state, registry):
-        stub.messages.turns = [turn(text("Hello."))]
+        stub.messages.turns = answered("Hello.")
         with patch.object(api_engine, "log") as log:
             outcome = await run(ApiEngine(state_manager=state), make_agent("a", resume="gone"), registry, prompt="Hi.")
 
@@ -526,7 +599,7 @@ class TestTranscript:
         {"model": "sonnet"},                               # another model
     ])
     async def test_a_changed_prefix_begins_afresh_under_the_same_id(self, stub, state, registry, changed):
-        stub.messages.turns = [turn(text("One.")), turn(text("Fresh."))]
+        stub.messages.turns = [*answered("One."), *answered("Fresh.")]
         first = await run(ApiEngine(state_manager=state), make_agent("a"), registry, prompt="Before.")
         _, old_prefix = state.load_transcript(first.session_id)
 
@@ -535,7 +608,7 @@ class TestTranscript:
                               registry, prompt="After.")
 
         assert later.session_id == first.session_id
-        assert stub.messages.requests[-1]["messages"] == [{"role": "user", "content": "After."}]
+        assert stub.messages.requests[2]["messages"] == [{"role": "user", "content": "After."}]
         messages, new_prefix = state.load_transcript(first.session_id)
         assert messages[0] == {"role": "user", "content": "After."}
         assert new_prefix != old_prefix
@@ -543,11 +616,11 @@ class TestTranscript:
 
     async def test_the_prefix_ignores_thinking_and_effort(self, stub, state, registry):
         """Request settings outside system / tools / model don't bind thinking."""
-        stub.messages.turns = [turn(text("One.")), turn(text("Two."))]
+        stub.messages.turns = [*answered("One."), *answered("Two.")]
         first = await run(ApiEngine(state_manager=state), make_agent("a"), registry, prompt="Before.")
         await run(ApiEngine(state_manager=state), make_agent("a", resume=first.session_id, effort="high", thinking=True),
                   registry, prompt="After.")
-        assert len(stub.messages.requests[-1]["messages"]) == 3  # continued
+        assert len(stub.messages.requests[2]["messages"]) == 5  # continued: step one's 4, then "After."
 
     async def test_close_lets_go_of_the_transcript(self, state):
         agent = make_agent("a")
@@ -558,7 +631,7 @@ class TestTranscript:
 
 class TestClients:
     async def test_one_client_per_key(self, stub, state, registry):
-        stub.messages.turns = [turn(text("1")), turn(text("2")), turn(text("3"))]
+        stub.messages.turns = [*answered("1"), *answered("2"), *answered("3")]
         engine = ApiEngine(state_manager=state)
         await run(engine, make_agent("a", env={"ANTHROPIC_API_KEY": "k1"}), registry)
         await run(engine, make_agent("b", env={"ANTHROPIC_API_KEY": "k1"}), registry)
@@ -569,7 +642,7 @@ class TestClients:
     def test_a_new_event_loop_gets_a_new_client(self, stub, state, registry):
         """pipeline.run() is a fresh asyncio.run() per call; an HTTP client's
         connections can't outlive the loop that opened them."""
-        stub.messages.turns = [turn(text("1")), turn(text("2"))]
+        stub.messages.turns = [*answered("1"), *answered("2")]
         engine = ApiEngine(state_manager=state)
         asyncio.run(run(engine, make_agent("a"), registry))
         asyncio.run(run(engine, make_agent("a"), registry))
