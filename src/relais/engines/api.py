@@ -14,8 +14,13 @@ twin of the sdk engine's live client — and saved to the run database
 that is the step's session_id. A host passes that id back as
 PipelineAgent.resume to continue the conversation on a later run.
 
-Per-step tool gating is physical here: each request offers the model the STEP's
-tools only. The registry wrapper's own check stays as a belt.
+Every request offers the model the AGENT's tool set — the same tools, in the
+same order, on every step, because a thinking block is bound to the system +
+tools prefix it was produced under: an agent whose steps offered different tools
+would have its earlier thinking rejected on its next step (and lose its prompt
+cache). Per-step gating is the registry wrapper's job, as on the sdk engine: a
+call to a tool outside the current step gets the wrapper's refusal back as its
+tool_result, and the tool body never runs.
 
 From the agent it reads model, max_turns, thinking, effort, resume and
 env["ANTHROPIC_API_KEY"]; its other fields configure the Claude Code CLI and are
@@ -129,7 +134,7 @@ class ApiEngine:
         transcript = agent.client
         client = self._client(agent)
         model = MODEL_ALIASES.get(agent.model or "opus", agent.model)
-        tools = _step_tools(step, registry)
+        tools = _agent_tools(agent, registry)
         events = StepEvents(emit, step.name, verbose)
         # Built once: every turn sends the same system and tools; `messages` is
         # the transcript itself, so each turn sends it as it has grown.
@@ -215,14 +220,15 @@ class ApiEngine:
         agent.client = None
 
 
-def _step_tools(step: PipelineStep, registry: ToolRegistry) -> Dict[str, ToolDefinition]:
-    """The step's tools, by name — the only tools a request offers the model."""
+def _agent_tools(agent: PipelineAgent, registry: ToolRegistry) -> Dict[str, ToolDefinition]:
+    """The agent's tools, by name and in its order — what every request offers.
+    (Which of them the current step may call is the registry wrapper's check.)"""
     tools = {}
-    for name in tool_names(step.tools):
+    for name in tool_names(agent.tools):
         definition = registry.get(name)
         if definition is None:
             raise ValueError(
-                f"Step '{step.name}' lists '{name}', which is not a registered pipeline tool. "
+                f"Agent '{agent.name}' lists '{name}', which is not a registered pipeline tool. "
                 f"The api engine runs registered tools only; Claude Code built-ins "
                 f"(Read, Bash, …) need the sdk engine."
             )
@@ -231,7 +237,8 @@ def _step_tools(step: PipelineStep, registry: ToolRegistry) -> Dict[str, ToolDef
 
 
 def _request(agent: PipelineAgent, model: str, tools: Dict[str, ToolDefinition], messages: list) -> dict:
-    """The keyword arguments of every model turn in a step.
+    """The keyword arguments of every model turn in a step (system and tools
+    are the same on every step the agent runs).
 
     Prompt caching: explicit breakpoints on the last tool and on the system
     prompt (tools render first, so the system's covers both), plus automatic
@@ -283,10 +290,11 @@ async def _turn(client: AsyncAnthropic, request: dict, events: StepEvents):
 
 
 async def _run_tool(block, tools: Dict[str, ToolDefinition], registry: ToolRegistry) -> dict:
-    """Run one tool call through the registry wrapper; its tool_result block."""
+    """Run one tool call through the registry wrapper — which refuses a tool
+    outside the current step — and return its tool_result block."""
     definition = tools.get(block.name)
     if definition is None:
-        # Can't happen — the request offered the step's tools only — but a name
+        # Can't happen — the request offered the agent's tools only — but a name
         # outside them is refused as the registry refuses it, as an error.
         return {"type": "tool_result", "tool_use_id": block.id, "content": registry._refusal(block.name), "is_error": True}
     return _tool_result(block.id, await definition.fn(block.input))

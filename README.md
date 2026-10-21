@@ -227,11 +227,16 @@ Each agent's steps run on an **engine**, picked per agent with `PipelineAgent(en
 | Needs | the bundled CLI (ships with `claude-agent-sdk`) and a key or `claude` login | an API key: `env={"ANTHROPIC_API_KEY": key}` on the agent, else the process environment |
 | Agent context | the CLI session | a transcript — the API messages the agent has accumulated |
 | `session_id` / `resume` | the Claude Code session id | the transcript id |
-| Tools | the pipeline's tools (served as an in-process MCP server) plus Claude Code built-ins | the pipeline's tools only — a request offers the model the step's tools and no others |
+| Tools | the pipeline's tools (served as an in-process MCP server) plus Claude Code built-ins | the pipeline's tools only — every request offers the agent's tools |
 
 ```python
 analyst = PipelineAgent(name="analyst", tools=[search, report], engine="api", model="sonnet")
 ```
+
+On both engines the step's `tools` list is enforced by the registry: the model is
+offered the agent's whole tool set, and a call to a tool outside the current step is
+refused before the tool body runs. (The api engine keeps the offered set the same on
+every step on purpose — a thinking block is bound to the tools it was produced under.)
 
 **Transcripts** live in the run database (`db_config`), table `transcripts`: the api
 engine saves an agent's transcript after every step, under the id each step reports as

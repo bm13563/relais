@@ -30,7 +30,8 @@ PipelineOrchestrator._execute_pipeline()
     │       │       ├── sdk: create/reuse the agent's ClaudeSDKClient,
     │       │       │        client.query(context), tools served as an MCP server
     │       │       ├── api: create/reuse the agent's transcript, run the
-    │       │       │        Messages API tool loop in-process
+    │       │       │        Messages API tool loop in-process, offering
+    │       │       │        the agent's tools (the same on every step)
     │       │       ├── Every tool call goes through the registry wrapper:
     │       │       │       ├── refuses tools not in step.tools
     │       │       │       └── appends allowed results to registry._tool_results
