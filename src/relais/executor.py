@@ -585,7 +585,17 @@ class PipelineOrchestrator:
                 f"Other tools are not available for this step and will be blocked if called."
             )
 
-        if step.response_tool:
+        if step.response_tool and self._on_event is not None:
+            # A streamed run: the host shows the prose as it is written, so the
+            # agent writes first and hands over last.
+            sections.append(
+                f"[Response Tool]\n"
+                f"You MUST call '{step.response_tool}' to complete this step — AFTER your "
+                f"answer, as your last act. Your prose IS shown to the person as you write "
+                f"it; only the output of '{step.response_tool}' is captured and passed to "
+                f"the next step."
+            )
+        elif step.response_tool:
             sections.append(
                 f"[Response Tool]\n"
                 f"You MUST call '{step.response_tool}' to complete this step. "
