@@ -66,7 +66,7 @@ API_SYSTEM_PROMPT = """You are one step of a relais pipeline: an automated workf
 
 - Work in turns: call a tool, read its result, decide what to do next. Call one tool at a time.
 - Verify before you claim: say what the tools actually showed you, and say so when you could not check something.
-- When the step's work is done, call the step's response tool exactly once, as your last act. Its output is the only thing passed on.
+- When the step's work is done, call the step's response tool exactly once, as your last act: the step ends there. Its output is the only thing passed on.
 - The step is complete only when its response tool has been called: ending your turn without calling it fails the step.
 - When the run is streamed, the prose you write is shown to the person as it streams — the step tells you when it is. Write it for them."""
 
@@ -160,7 +160,7 @@ class ApiEngine:
         # the transcript itself, so each turn sends it as it has grown.
         request = _request(agent, model, offered, transcript.messages)
 
-        transcript.messages.append({"role": "user", "content": _user_content(prompt, images)})
+        _append_user(transcript.messages, _user_content(prompt, images))
         final_text = ""
         tool_calls = []
         turns_used = 0
@@ -197,10 +197,7 @@ class ApiEngine:
                     # transcript to stay valid for the next step (or a resume).
                     is_error, error_kind = True, message.stop_reason
                     if calls:
-                        transcript.messages.append({
-                            "role": "user",
-                            "content": [_not_run(block.id, message.stop_reason) for block in calls],
-                        })
+                        _append_user(transcript.messages, [_not_run(block.id, message.stop_reason) for block in calls])
                     break
                 if not calls:
                     # end_turn. The step is complete only once its response tool
@@ -211,7 +208,7 @@ class ApiEngine:
                     if (not nudged and turns_used < agent.max_turns
                             and registry.get_tool_result(step.response_tool) is None):
                         nudged = True
-                        transcript.messages.append({"role": "user", "content": _nudge(step.response_tool)})
+                        _append_user(transcript.messages, _nudge(step.response_tool))
                         continue
                     break  # the model is done
 
@@ -220,10 +217,15 @@ class ApiEngine:
                     tool_calls.append({"id": block.id, "tool": block.name, "input": block.input})
                     await events.tool_use(block.name, block.input)
                     results.append(await _run_tool(block, tools, registry))
-                transcript.messages.append({"role": "user", "content": results})
+                _append_user(transcript.messages, results)
 
+                # The step ends with its answer: once the response tool has run
+                # there is no further model turn (it would only write filler the
+                # host shows the person, and cost a turn).
+                if registry.get_tool_result(step.response_tool) is not None:
+                    break
                 # The turn cap, checked after the turn's tools ran — so a response
-                # tool called in the last allowed turn is still captured.
+                # tool called in the last allowed turn still ends the step cleanly.
                 if turns_used >= agent.max_turns:
                     is_error, error_kind = True, "max_turns"
                     break
@@ -306,6 +308,27 @@ def _request(agent: PipelineAgent, model: str, offered: list[dict], messages: li
     if agent.effort:
         request["output_config"] = {"effort": agent.effort}
     return request
+
+
+def _append_user(messages: list, content) -> None:
+    """Append a user message to the transcript — or, when it already ends with
+    one, extend that one: the Messages API takes no two user messages in a row.
+
+    A transcript can end with a user message: a step that ended on its
+    response tool (or a cut-off, or the turn cap) leaves its tool results last.
+    The next step's prompt, or a resumed run's, then joins them. The existing
+    blocks stay first — tool_result blocks must lead a user message — and the
+    new ones follow.
+    """
+    if messages and messages[-1]["role"] == "user":
+        messages[-1]["content"] = _blocks(messages[-1]["content"]) + _blocks(content)
+    else:
+        messages.append({"role": "user", "content": content})
+
+
+def _blocks(content) -> list:
+    """Message content as a list of blocks (a str is one text block)."""
+    return [{"type": "text", "text": content}] if isinstance(content, str) else list(content)
 
 
 def _user_content(prompt: str, images: list[str]):
