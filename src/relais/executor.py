@@ -195,9 +195,11 @@ class PipelineOrchestrator:
             start_step=config.start_step,
             args=run_args,
         )
+        # The run, not its input: the input is the host's content (a person's
+        # question) — it is in the run database; the log says a run began.
         self.log.info(
             "run_started", run=run_id, pipeline=pipeline_name,
-            start_step=config.start_step, input=initial_input[:200],
+            start_step=config.start_step, input_chars=len(initial_input),
         )
 
         try:
@@ -339,6 +341,8 @@ class PipelineOrchestrator:
                 tools=tool_names(step.tools), max_turns=agent.max_turns, model=agent.model or "opus",
                 engine=agent.engine,
             )
+            # DEBUG ONLY (spool writes info and up by default): the whole prompt, which
+            # is the host's content — never raise relais's logger to debug in production.
             self.log.debug("step_context", run=run_id, step=current_step_name, context=context)
 
             await self._emit({"type": "step_start", "run": run_id, "step": current_step_name, "agent": agent_name})

@@ -101,7 +101,9 @@ class PipelineAgent:
     permission_mode: str = "acceptEdits"
     effort: Optional[str] = None
     resume: Optional[str] = None
-    env: Optional[dict] = None
+    # repr=False: `env` carries the API key; an agent printed in a log or an
+    # error message must not print it.
+    env: Optional[dict] = field(default=None, repr=False)
     builtin_tools: Optional[list] = None
     engine: str = "sdk"
     steps_remaining: Optional[int] = field(default=None, init=False)
