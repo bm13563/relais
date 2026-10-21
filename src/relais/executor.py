@@ -299,7 +299,14 @@ class PipelineOrchestrator:
                     if isinstance(hr, dict):
                         routing_data.update(hr)
                 next_step_name = step.resolve_next(routing_data)
-                self.log.info("route", run=run_id, step=current_step_name, data=routing_data, next=next_step_name)
+                # The route, not the data: a step's output is the host's content (a
+                # review, an answer, a person's figures) and belongs in the run database,
+                # not in a log file with no retention. The keys say what shape came back.
+                self.log.info(
+                    "route", run=run_id, step=current_step_name,
+                    keys=sorted(routing_data) if isinstance(routing_data, dict) else type(routing_data).__name__,
+                    next=next_step_name,
+                )
                 outputs[current_step_name] = routing_data
                 previous_result = routing_data
                 current_step_name = next_step_name
