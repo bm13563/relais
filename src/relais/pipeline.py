@@ -245,6 +245,25 @@ class Pipeline:
             args=args,
         )
 
+    async def arun(
+        self,
+        initial_input: str,
+        args: dict = None,
+    ) -> str:
+        """Async twin of run(): await the pipeline inside the caller's event loop.
+
+        run() calls asyncio.run() and so cannot be used from a loop that is
+        already running — an async web framework's route, an async job worker.
+        Same contract otherwise: start-to-finish, returns the run's UUID; read
+        the result with get_run(run_id) (its current_step is the final step, and
+        step_results[current_step]["routing_data"] that step's output).
+        """
+        return await self.orchestrator.start_pipeline_async(
+            pipeline_name=self.name,
+            initial_input=initial_input,
+            args=args,
+        )
+
     def start_conversation(self, args: dict = None):
         """Begin a conversational run of this pipeline.
 

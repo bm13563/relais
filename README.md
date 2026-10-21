@@ -240,7 +240,12 @@ Examples are in the `examples/pipelines/` directory.
 
 ### Prerequisites
 
-Authentication is handled via Claude Code CLI (run `claude` to authenticate).
+**Authentication.** Set `ANTHROPIC_API_KEY` in the environment. The Agent SDK drives a
+bundled Claude Code CLI (no separate install) and that process reads the key — relais itself
+never touches credentials. API-key auth bills at API rates and is the route for anything that
+runs for other people: Anthropic does not permit third-party products to ride on a claude.ai
+subscription login. On your own machine, with no key set, the CLI falls back to its own
+`claude` login — fine for local hacking, not for a deployment.
 
 ### Run Examples
 
@@ -332,9 +337,10 @@ Pipeline.create(
     verbose: bool = False,           # Print step output + token usage to console
 )
 
-pipeline.run(initial_input: str, args: dict = None, session: str = None) -> str  # Returns run_id
+pipeline.run(initial_input: str, args: dict = None) -> str          # sync; returns run_id
+await pipeline.arun(initial_input: str, args: dict = None) -> str   # the same, from a running event loop
 pipeline.get_run(run_id: str) -> PipelineRunState
-pipeline.resume(run_id: str, user_input: str = None)
+pipeline.start_conversation(args: dict = None) -> Conversation       # docs/conversations.md
 pipeline.initialize_db()
 ```
 

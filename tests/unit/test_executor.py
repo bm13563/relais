@@ -404,7 +404,7 @@ class TestStartPipeline:
         with pytest.raises(ValueError, match="Unknown pipeline"):
             orchestrator.start_pipeline("nonexistent", "input")
 
-    @patch.object(PipelineOrchestrator, '_start_pipeline_async')
+    @patch.object(PipelineOrchestrator, 'start_pipeline_async')
     def test_start_pipeline_calls_async(self, mock_async):
         """Test that start_pipeline wraps async method."""
         mock_async.return_value = "run-123"

@@ -153,15 +153,23 @@ class PipelineOrchestrator:
         initial_input: str,
         args: dict = None,
     ) -> str:
-        """Start and run a pipeline to completion. Returns the run ID."""
-        return asyncio.run(self._start_pipeline_async(pipeline_name, initial_input, args))
+        """Start and run a pipeline to completion. Returns the run ID.
 
-    async def _start_pipeline_async(
+        Owns its own event loop (asyncio.run), so it is for SYNC callers only —
+        from inside a running loop use start_pipeline_async().
+        """
+        return asyncio.run(self.start_pipeline_async(pipeline_name, initial_input, args))
+
+    async def start_pipeline_async(
         self,
         pipeline_name: str,
         initial_input: str,
         args: dict = None,
     ) -> str:
+        """The async twin of start_pipeline: awaits the run inside the CALLER's
+        event loop (an async web framework, an async job worker). Every SDK
+        client the run opens lives and dies within this one awaiting task, which
+        is what the anyio cancel-scope rule needs. Returns the run ID."""
         config = self.pipelines.get(pipeline_name)
         if not config:
             raise ValueError(f"Unknown pipeline: {pipeline_name}")

@@ -85,7 +85,10 @@ convo.end_conversation()   # disconnect agents, clear state, remove from registr
 
 `continue_conversation` only advances a conversation that is currently awaiting
 input (its resting state between turns). It is **synchronous** — it blocks until
-the turn completes — so it is safe to call from sync code.
+the turn completes — so it is safe to call from sync code. From an **async**
+caller (an `async def` route, an async job worker) use
+`await convo.acontinue_conversation(text)`: same turn, awaited on the caller's
+loop instead of blocking its thread.
 
 ## Implementation
 
