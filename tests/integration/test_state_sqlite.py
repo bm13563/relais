@@ -126,13 +126,13 @@ class TestTranscripts:
     ]
 
     def test_round_trip(self, state_manager):
-        state_manager.save_transcript("t1", self.MESSAGES)
-        assert state_manager.load_transcript("t1") == self.MESSAGES
+        state_manager.save_transcript("t1", self.MESSAGES, "prefix-a")
+        assert state_manager.load_transcript("t1") == (self.MESSAGES, "prefix-a")
 
     def test_a_later_save_replaces_the_earlier_one(self, state_manager):
-        state_manager.save_transcript("t1", self.MESSAGES[:1])
-        state_manager.save_transcript("t1", self.MESSAGES)
-        assert state_manager.load_transcript("t1") == self.MESSAGES
+        state_manager.save_transcript("t1", self.MESSAGES[:1], "prefix-a")
+        state_manager.save_transcript("t1", self.MESSAGES, "prefix-b")
+        assert state_manager.load_transcript("t1") == (self.MESSAGES, "prefix-b")
 
     def test_unknown_id_is_none(self, state_manager):
         assert state_manager.load_transcript("nope") is None
@@ -141,5 +141,5 @@ class TestTranscripts:
         db_path = str(tmp_path / "transcripts.db")
         writer = SQLiteStateManager.create(db_path)
         writer.initialize_schema()
-        writer.save_transcript("t1", self.MESSAGES)
-        assert SQLiteStateManager.create(db_path).load_transcript("t1") == self.MESSAGES
+        writer.save_transcript("t1", self.MESSAGES, "prefix-a")
+        assert SQLiteStateManager.create(db_path).load_transcript("t1") == (self.MESSAGES, "prefix-a")

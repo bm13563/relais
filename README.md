@@ -242,7 +242,11 @@ every step on purpose — a thinking block is bound to the tools it was produced
 engine saves an agent's transcript after every step, under the id each step reports as
 its `session_id`. Pass it back as `PipelineAgent(resume=...)` on a later run to continue
 that conversation. (Run `pipeline.initialize_db()` once on an existing database to add
-the table.)
+the table.) A transcript continues only under the prefix it was made with — the agent's
+model and tools (and relais's system prompt), which its thinking is bound to. If the
+transcript is unknown, or that prefix has changed since (say, a tool added to the agent),
+the agent begins a fresh transcript under the same id: the handle stays valid, the
+model's memory of the earlier conversation is dropped, and an info line is logged.
 
 **SDK-only agent fields** — the api engine ignores them: `permission_mode`,
 `builtin_tools`, `env` beyond `ANTHROPIC_API_KEY`, and the pipeline's `cwd` (as well as

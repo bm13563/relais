@@ -11,6 +11,7 @@ import asyncio
 import copy
 from pathlib import Path
 from typing import Annotated
+from unittest.mock import patch
 
 import anthropic
 import httpx2
@@ -483,11 +484,12 @@ class TestTranscript:
             {"role": "user", "content": "Step two."},
         ]
 
-    async def test_saved_after_every_step_and_resumed(self, stub, state, registry):
+    async def test_saved_after_every_step_and_resumed_under_the_same_prefix(self, stub, state, registry):
         stub.messages.turns = [turn(call("t1", "classify", {"category": "q"})), turn(text("Classified."))]
         outcome = await run(ApiEngine(state_manager=state), make_agent("a"), registry, prompt="Go.")
 
-        saved = state.load_transcript(outcome.session_id)
+        saved, prefix = state.load_transcript(outcome.session_id)
+        assert len(prefix) == 64  # a sha256 hex digest
         assert [m["role"] for m in saved] == ["user", "assistant", "user", "assistant"]
         assert saved[1]["content"] == [{"type": "tool_use", "id": "t1", "name": "classify", "input": {"category": "q"}}]
 
@@ -498,20 +500,58 @@ class TestTranscript:
 
         assert later.session_id == outcome.session_id
         assert stub.messages.requests[-1]["messages"] == saved + [{"role": "user", "content": "What did I ask?"}]
-        assert len(state.load_transcript(outcome.session_id)) == 6
+        assert state.load_transcript(outcome.session_id) == (saved + [
+            {"role": "user", "content": "What did I ask?"},
+            {"role": "assistant", "content": [{"type": "text", "text": "You asked me to classify."}]},
+        ], prefix)
 
     async def test_saved_when_the_step_errors(self, stub, state, registry):
         stub.messages.turns = [api_error(anthropic.RateLimitError, 429)]
         outcome = await run(ApiEngine(state_manager=state), make_agent("a"), registry, prompt="Go.")
-        assert state.load_transcript(outcome.session_id) == [{"role": "user", "content": "Go."}]
+        assert state.load_transcript(outcome.session_id)[0] == [{"role": "user", "content": "Go."}]
 
-    async def test_resuming_an_unknown_transcript_fails(self, stub, state, registry):
-        with pytest.raises(ValueError, match="transcript 'gone'"):
-            await run(ApiEngine(state_manager=state), make_agent("a", resume="gone"), registry)
+    async def test_an_unknown_transcript_begins_afresh_under_its_id(self, stub, state, registry):
+        stub.messages.turns = [turn(text("Hello."))]
+        with patch.object(api_engine, "log") as log:
+            outcome = await run(ApiEngine(state_manager=state), make_agent("a", resume="gone"), registry, prompt="Hi.")
+
+        assert outcome.session_id == "gone"
+        assert outcome.is_error is False
+        assert stub.messages.requests[0]["messages"] == [{"role": "user", "content": "Hi."}]
+        assert state.load_transcript("gone")[0][0] == {"role": "user", "content": "Hi."}
+        assert log.info.call_args.args == ("transcript gone not found: beginning afresh",)
+
+    @pytest.mark.parametrize("changed", [
+        {"tools": ["lookup", "classify", "screenshot"]},  # a tool added to the agent
+        {"model": "sonnet"},                               # another model
+    ])
+    async def test_a_changed_prefix_begins_afresh_under_the_same_id(self, stub, state, registry, changed):
+        stub.messages.turns = [turn(text("One.")), turn(text("Fresh."))]
+        first = await run(ApiEngine(state_manager=state), make_agent("a"), registry, prompt="Before.")
+        _, old_prefix = state.load_transcript(first.session_id)
+
+        with patch.object(api_engine, "log") as log:
+            later = await run(ApiEngine(state_manager=state), make_agent("a", resume=first.session_id, **changed),
+                              registry, prompt="After.")
+
+        assert later.session_id == first.session_id
+        assert stub.messages.requests[-1]["messages"] == [{"role": "user", "content": "After."}]
+        messages, new_prefix = state.load_transcript(first.session_id)
+        assert messages[0] == {"role": "user", "content": "After."}
+        assert new_prefix != old_prefix
+        assert log.info.call_args.args == (f"transcript {first.session_id} prefix changed: beginning afresh",)
+
+    async def test_the_prefix_ignores_thinking_and_effort(self, stub, state, registry):
+        """Request settings outside system / tools / model don't bind thinking."""
+        stub.messages.turns = [turn(text("One.")), turn(text("Two."))]
+        first = await run(ApiEngine(state_manager=state), make_agent("a"), registry, prompt="Before.")
+        await run(ApiEngine(state_manager=state), make_agent("a", resume=first.session_id, effort="high", thinking=True),
+                  registry, prompt="After.")
+        assert len(stub.messages.requests[-1]["messages"]) == 3  # continued
 
     async def test_close_lets_go_of_the_transcript(self, state):
         agent = make_agent("a")
-        agent.set_client(Transcript(id="t"))
+        agent.set_client(Transcript(id="t", prefix="p"))
         await ApiEngine(state_manager=state).close(agent)
         assert agent.client is None
 
@@ -562,5 +602,6 @@ class TestThroughTheOrchestrator:
         done = [e for e in events if e["type"] == "step_done"][0]
         assert done["routing_data"] == {"category": "question"}
         assert done["usage"]["input_tokens"] == 20
-        assert state.load_transcript(done["session_id"])[0]["content"].startswith("[User Input]\nIs this a question?")
+        messages, _ = state.load_transcript(done["session_id"])
+        assert messages[0]["content"].startswith("[User Input]\nIs this a question?")
         assert state.get_pipeline_run(state_run).status == "completed"

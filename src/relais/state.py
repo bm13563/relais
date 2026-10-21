@@ -8,7 +8,8 @@ Also keeps the api engine's transcripts: the Messages API messages an agent has
 accumulated, saved after every step under a transcript id — the continuity
 handle a host passes back as PipelineAgent.resume to continue that agent's
 conversation on a later run (the sdk engine's equivalent lives in Claude Code's
-own session files).
+own session files) — together with the prefix it was made under (a hash of the
+model, system prompt and tools), since a transcript resumes only under that.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 
 @dataclass
@@ -68,6 +69,7 @@ class SQLiteStateManager:
     CREATE TABLE IF NOT EXISTS transcripts (
         id TEXT PRIMARY KEY,
         messages TEXT NOT NULL,
+        prefix TEXT NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     '''
@@ -211,27 +213,29 @@ class SQLiteStateManager:
         finally:
             conn.close()
 
-    def save_transcript(self, transcript_id: str, messages: list) -> None:
-        """Store an api-engine transcript (its Messages API messages), replacing
-        any earlier save under the same id."""
+    def save_transcript(self, transcript_id: str, messages: list, prefix: str) -> None:
+        """Store an api-engine transcript — its Messages API messages and the
+        prefix they were made under — replacing any earlier save under the id."""
         conn = self._get_connection()
         try:
             conn.execute("""
-                INSERT INTO transcripts (id, messages) VALUES (?, ?)
+                INSERT INTO transcripts (id, messages, prefix) VALUES (?, ?, ?)
                 ON CONFLICT(id) DO UPDATE
-                SET messages = excluded.messages, updated_at = CURRENT_TIMESTAMP
-            """, (transcript_id, json.dumps(messages)))
+                SET messages = excluded.messages, prefix = excluded.prefix,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (transcript_id, json.dumps(messages), prefix))
             conn.commit()
         finally:
             conn.close()
 
-    def load_transcript(self, transcript_id: str) -> Optional[list]:
-        """Load a transcript's messages, or None if no transcript has that id."""
+    def load_transcript(self, transcript_id: str) -> Optional[Tuple[list, str]]:
+        """Load a transcript as (messages, prefix), or None if no transcript has
+        that id."""
         conn = self._get_connection()
         try:
             row = conn.execute(
-                "SELECT messages FROM transcripts WHERE id = ?", (transcript_id,)
+                "SELECT messages, prefix FROM transcripts WHERE id = ?", (transcript_id,)
             ).fetchone()
-            return json.loads(row['messages']) if row else None
+            return (json.loads(row['messages']), row['prefix']) if row else None
         finally:
             conn.close()

@@ -14,6 +14,14 @@ twin of the sdk engine's live client — and saved to the run database
 that is the step's session_id. A host passes that id back as
 PipelineAgent.resume to continue the conversation on a later run.
 
+A transcript resumes only under the PREFIX it was made with — the model, the
+system prompt and the offered tools, which its thinking blocks are bound to — so
+each is saved with a hash of that prefix. A resume naming an unknown transcript,
+or one whose prefix has since changed (a new tool on the agent, another model),
+begins a fresh transcript under the same id: the host's handle stays valid, the
+model's memory is dropped, and the step runs rather than failing on rejected
+thinking.
+
 Every request offers the model the AGENT's tool set — the same tools, in the
 same order, on every step, because a thinking block is bound to the system +
 tools prefix it was produced under: an agent whose steps offered different tools
@@ -29,6 +37,8 @@ ignored (see PipelineAgent).
 
 from __future__ import annotations
 import asyncio
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, Optional, Tuple
 from uuid import uuid4
@@ -37,12 +47,15 @@ import anthropic
 from anthropic import AsyncAnthropic
 
 from ..engine import USAGE_KEYS, EventSink, StepEvents, StepOutcome
+from ..logging_config import get_logger
 from ..tools import ToolDefinition, ToolRegistry, tool_names
 
 if TYPE_CHECKING:
     from ..agent import PipelineAgent
     from ..state import SQLiteStateManager
     from ..step import PipelineStep
+
+log = get_logger("relais")
 
 
 # The system prompt of every request. Frozen — it heads the cached prefix, and a
@@ -75,9 +88,11 @@ CUT_OFF = ("max_tokens", "model_context_window_exceeded", "refusal")
 
 @dataclass
 class Transcript:
-    """An api-engine agent's conversation: its id (the continuity handle) and
-    the Messages API messages accumulated under it."""
+    """An api-engine agent's conversation: its id (the continuity handle), the
+    prefix it is made under (see _prefix), and the Messages API messages
+    accumulated under it."""
     id: str
+    prefix: str
     messages: list = field(default_factory=list)
 
 
@@ -105,17 +120,17 @@ class ApiEngine:
             self._clients[key] = held
         return held[1]
 
-    def _open(self, agent: PipelineAgent) -> Transcript:
-        """A new transcript, or the one agent.resume names (from the run database)."""
+    def _open(self, agent: PipelineAgent, prefix: str) -> Transcript:
+        """A new transcript, or the one agent.resume names — continued if it was
+        made under this prefix, else begun afresh under the same id."""
         if agent.resume is None:
-            return Transcript(id=uuid4().hex)
-        messages = self.state_manager.load_transcript(agent.resume)
-        if messages is None:
-            raise ValueError(
-                f"Agent '{agent.name}' resumes transcript '{agent.resume}', "
-                f"which is not in the run database"
-            )
-        return Transcript(id=agent.resume, messages=messages)
+            return Transcript(id=uuid4().hex, prefix=prefix)
+        saved = self.state_manager.load_transcript(agent.resume)
+        if saved is None or saved[1] != prefix:
+            why = "not found" if saved is None else "prefix changed"
+            log.info(f"transcript {agent.resume} {why}: beginning afresh", agent=agent.name, transcript=agent.resume)
+            return Transcript(id=agent.resume, prefix=prefix)
+        return Transcript(id=agent.resume, prefix=prefix, messages=saved[0])
 
     async def run_step(
         self,
@@ -129,16 +144,17 @@ class ApiEngine:
         verbose: bool,
     ) -> StepOutcome:
         """Run one step: its prompt, then model turns until it stops calling tools."""
-        if not agent.has_client():
-            agent.set_client(self._open(agent))
-        transcript = agent.client
-        client = self._client(agent)
         model = MODEL_ALIASES.get(agent.model or "opus", agent.model)
         tools = _agent_tools(agent, registry)
+        offered = _offered(tools)
+        if not agent.has_client():
+            agent.set_client(self._open(agent, _prefix(model, offered)))
+        transcript = agent.client
+        client = self._client(agent)
         events = StepEvents(emit, step.name, verbose)
         # Built once: every turn sends the same system and tools; `messages` is
         # the transcript itself, so each turn sends it as it has grown.
-        request = _request(agent, model, tools, transcript.messages)
+        request = _request(agent, model, offered, transcript.messages)
 
         transcript.messages.append({"role": "user", "content": _user_content(prompt, images)})
         final_text = ""
@@ -203,7 +219,7 @@ class ApiEngine:
             error_kind = "rate_limit" if isinstance(e, anthropic.RateLimitError) else type(e).__name__
             result_text = str(e)
 
-        self.state_manager.save_transcript(transcript.id, transcript.messages)
+        self.state_manager.save_transcript(transcript.id, transcript.messages, transcript.prefix)
         return StepOutcome(
             final_text=final_text,
             tool_calls=tool_calls,
@@ -236,7 +252,22 @@ def _agent_tools(agent: PipelineAgent, registry: ToolRegistry) -> Dict[str, Tool
     return tools
 
 
-def _request(agent: PipelineAgent, model: str, tools: Dict[str, ToolDefinition], messages: list) -> dict:
+def _offered(tools: Dict[str, ToolDefinition]) -> list[dict]:
+    """The tools as a request offers them: name, description, schema, in order."""
+    return [
+        {"name": d.name, "description": d.description, "input_schema": d.input_schema or NO_PARAMETERS}
+        for d in tools.values()
+    ]
+
+
+def _prefix(model: str, offered: list[dict]) -> str:
+    """A hash of what a transcript's thinking is bound to: the model, the system
+    prompt and the offered tools. A transcript resumes only under the same one."""
+    bound = json.dumps({"model": model, "system": API_SYSTEM_PROMPT, "tools": offered}, sort_keys=True)
+    return hashlib.sha256(bound.encode()).hexdigest()
+
+
+def _request(agent: PipelineAgent, model: str, offered: list[dict], messages: list) -> dict:
     """The keyword arguments of every model turn in a step (system and tools
     are the same on every step the agent runs).
 
@@ -253,13 +284,8 @@ def _request(agent: PipelineAgent, model: str, tools: Dict[str, ToolDefinition],
         "messages": messages,
         "cache_control": CACHE,
     }
-    if tools:
-        offered = [
-            {"name": d.name, "description": d.description, "input_schema": d.input_schema or NO_PARAMETERS}
-            for d in tools.values()
-        ]
-        offered[-1]["cache_control"] = CACHE
-        request["tools"] = offered
+    if offered:
+        request["tools"] = offered[:-1] + [{**offered[-1], "cache_control": CACHE}]
     if agent.thinking:
         request["thinking"] = {"type": "adaptive"}
     if agent.effort:
