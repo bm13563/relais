@@ -112,6 +112,7 @@ different agents have two different engine states and therefore isolated context
 | executor.py | Core execution: _execute_pipeline(), _execute_step() |
 | engine.py | The engine seam: StepOutcome, Engine, StepEvents |
 | engines/sdk.py | sdk engine: Claude Code CLI via the Claude Agent SDK |
+| engines/api.py | api engine: in-process tool loop on the Messages API |
 | tools.py | Tool registration, per-step gating, result capture (engine-neutral) |
 | step.py | PipelineStep definition, routing logic |
 | agent.py | PipelineAgent definition + its engine state |

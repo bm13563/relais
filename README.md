@@ -1,6 +1,7 @@
 # Relais
 
-A framework for building multi-step AI agent pipelines using the Claude Agent SDK.
+A framework for building multi-step AI agent pipelines on Claude — through the Claude
+Agent SDK, or in-process on the Anthropic Messages API (see [Engines](#engines)).
 
 *Relais* (French for "relay") - agents relay data to each other through pipeline steps.
 
@@ -21,9 +22,10 @@ was granted and does exactly one thing before handing off. It enables you to:
 
 ### Core model
 
-- **Agent** — owns a model, a `max_turns` budget, a `steps` budget, and a tool set.
-  A live instance connects one SDK client on first run and keeps it across the
-  steps it participates in, so its conversation context lives in RAM. With
+- **Agent** — owns a model, a `max_turns` budget, a `steps` budget, a tool set, and
+  the engine its steps run on. A live instance opens its engine state on first run
+  (a CLI client, or a transcript) and keeps it across the steps it participates in,
+  so its conversation context carries from step to step. With
   `steps=N` the instance expires after N steps and the next route to that agent
   starts a fresh instance with clean context; `steps=None` (default) persists for
   the whole run. Two different agents always have isolated context.
@@ -138,7 +140,7 @@ PipelineStep(
 
 ### Isolated vs. shared agents
 
-Give two steps **different** agents and they get separate SDK clients and isolated
+Give two steps **different** agents and they get separate engine state and isolated
 conversation context — the later step sees the earlier one only through
 `[Previous Step Output]`:
 
@@ -159,7 +161,7 @@ steps = {
 ```
 
 Give two steps the **same** agent and it persists across them, keeping its
-conversation live in its SDK client.
+conversation live in its engine state (its CLI client, or its transcript).
 
 **Step budget (`steps=N`).** When you want an agent to carry context across a
 bounded unit of work and then start clean, give it a step budget:
@@ -215,6 +217,39 @@ PipelineStep(
 )
 ```
 
+### Engines
+
+Each agent's steps run on an **engine**, picked per agent with `PipelineAgent(engine=...)`:
+
+| | `"sdk"` (default) | `"api"` |
+|---|---|---|
+| Runs a step in | a Claude Code CLI subprocess per agent, driven by the Claude Agent SDK | the host's own process, on the Anthropic Messages API (`anthropic` SDK) |
+| Needs | the bundled CLI (ships with `claude-agent-sdk`) and a key or `claude` login | an API key: `env={"ANTHROPIC_API_KEY": key}` on the agent, else the process environment |
+| Agent context | the CLI session | a transcript — the API messages the agent has accumulated |
+| `session_id` / `resume` | the Claude Code session id | the transcript id |
+| Tools | the pipeline's tools (served as an in-process MCP server) plus Claude Code built-ins | the pipeline's tools only — a request offers the model the step's tools and no others |
+
+```python
+analyst = PipelineAgent(name="analyst", tools=[search, report], engine="api", model="sonnet")
+```
+
+**Transcripts** live in the run database (`db_config`), table `transcripts`: the api
+engine saves an agent's transcript after every step, under the id each step reports as
+its `session_id`. Pass it back as `PipelineAgent(resume=...)` on a later run to continue
+that conversation. (Run `pipeline.initialize_db()` once on an existing database to add
+the table.)
+
+**SDK-only agent fields** — the api engine ignores them: `permission_mode`,
+`builtin_tools`, `env` beyond `ANTHROPIC_API_KEY`, and the pipeline's `cwd` (as well as
+the CLI's setting sources, which relais always switches off). Everything else applies on
+both: `model` (the api engine maps `opus` / `sonnet` / `haiku` to `claude-opus-5-5` /
+`claude-sonnet-5-5` / `claude-haiku-5-5`; any other value is sent as a model id),
+`max_turns`, `thinking` (api: adaptive thinking), `effort`, `resume`, `steps`, `tools`.
+
+The api engine streams each model turn, so `astream()` sees the same `text_delta` and
+`tool_use` events, plus a `usage` event after every turn; every engine reports a step's
+summed token counts on `step_done` as `usage`.
+
 ### Tool Definition
 
 Tools must be async and return the MCP content format. Use `Annotated` to describe parameters,
@@ -240,11 +275,12 @@ Examples are in the `examples/pipelines/` directory.
 
 ### Prerequisites
 
-**Authentication.** Set `ANTHROPIC_API_KEY` in the environment. The Agent SDK drives a
-bundled Claude Code CLI (no separate install) and that process reads the key — relais itself
-never touches credentials. API-key auth bills at API rates and is the route for anything that
+**Authentication.** Set `ANTHROPIC_API_KEY` in the environment. On the sdk engine the Agent
+SDK drives a bundled Claude Code CLI (no separate install) and that process reads the key —
+relais itself never touches credentials; on the api engine the `anthropic` client in the
+host process reads it. API-key auth bills at API rates and is the route for anything that
 runs for other people: Anthropic does not permit third-party products to ride on a claude.ai
-subscription login. With no key set, the bundled CLI falls back to the `claude` login on that
+subscription login. With no key set, the bundled CLI (sdk engine) falls back to the `claude` login on that
 machine; Anthropic's terms treat that as ordinary individual use of the Agent SDK on your own
 subscription — fine for your own experiments, never for anything that runs for other people,
 and a product may never offer a claude.ai login of its own
@@ -309,9 +345,11 @@ relais/
 │   ├── pipeline.py      # High-level Pipeline class
 │   ├── step.py          # PipelineStep definition
 │   ├── agent.py         # PipelineAgent definition + lifecycle
-│   ├── executor.py      # Pipeline execution engine
+│   ├── executor.py      # Pipeline orchestration: context, routing, state
+│   ├── engine.py        # The engine seam: StepOutcome, Engine
+│   ├── engines/         # sdk.py (Claude Agent SDK), api.py (Messages API)
 │   ├── tools.py         # Tool registry, @tool decorator, per-step gating
-│   ├── state.py         # SQLite persistence for pipeline runs
+│   ├── state.py         # SQLite persistence for pipeline runs and transcripts
 │   ├── logging_config.py # spool logging setup
 │   └── utils.py         # Utilities
 ├── examples/
@@ -345,7 +383,8 @@ Pipeline.create(
 pipeline.run(initial_input: str, args: dict = None) -> str          # sync; returns run_id
 await pipeline.arun(initial_input: str, args: dict = None) -> str   # the same, from a running event loop
 async for event in pipeline.astream(initial_input, args)            # the run's events as they happen:
-                                                                     # step_start, text_delta, tool_use, step_done, run_done
+                                                                     # step_start, text_delta, tool_use, usage,
+                                                                     # step_done, run_done
 pipeline.get_run(run_id: str) -> PipelineRunState
 pipeline.start_conversation(args: dict = None) -> Conversation       # docs/conversations.md
 pipeline.initialize_db()
@@ -378,14 +417,16 @@ PipelineAgent(
     tools: List[Union[str, Callable]] = [],  # Tools this agent may use
     steps: int = None,                  # None = persists all run; N = expire after N steps
     max_turns: int = 10,                # Max model round-trips per step
-    model: str = "opus",                # Model (opus, sonnet, haiku)
+    model: str = "opus",                # Model (opus, sonnet, haiku — or a model id)
     thinking: bool = False,             # Enable extended thinking
-    permission_mode: str = "acceptEdits",  # SDK permission mode for built-in tools
+    engine: str = "sdk",                # "sdk" (Claude Code CLI) or "api" (Messages API) — see Engines
+    permission_mode: str = "acceptEdits",  # sdk only: permission mode for built-in tools
     effort: str = None,                 # Reasoning effort (low … max); None = default
-    resume: str = None,                 # Claude Code session id to resume
+    resume: str = None,                 # Session (sdk) / transcript (api) id to resume
     env: dict = None,                   # Extra env for this agent's Claude Code subprocess,
                                         # e.g. {"ANTHROPIC_API_KEY": key} from the host's settings
-    builtin_tools: list = None,         # Claude Code built-ins the client may have at all;
+                                        # (the api engine reads only ANTHROPIC_API_KEY)
+    builtin_tools: list = None,         # sdk only: Claude Code built-ins the client may have at all;
                                         # [] = none (an agent inside a server), None = the SDK default
 )
 ```

@@ -276,6 +276,10 @@ class Pipeline:
           {"type": "text_delta", "step", "text"}         a piece of the model's prose
           {"type": "tool_use", "step", "name", "input"}  a tool the model called,
                                                         by its registry name
+          {"type": "usage", "step", "model", "input_tokens", "output_tokens",
+           "cache_read_input_tokens", "cache_creation_input_tokens"}
+                                                        one model turn's token counts
+                                                        (api engine: after each turn)
           {"type": "step_done", "run", "step", "routing_data", "session_id",
                                  "turns", "next", "usage"} a step finished; `usage`
                                                         its token counts summed over

@@ -608,6 +608,11 @@ class TestEngines:
         assert first is second
         assert first.cwd == "/work"
 
+    def test_a_fresh_instance_keeps_the_engine(self):
+        clone = PipelineOrchestrator._clone_agent(PipelineAgent(name="a", engine="api", steps=2))
+        assert clone.engine == "api"
+        assert clone.client is None
+
     @pytest.mark.asyncio
     async def test_safe_close_goes_through_the_engine(self):
         orchestrator = self._orchestrator()

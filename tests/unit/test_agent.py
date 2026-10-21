@@ -111,6 +111,12 @@ class TestAgentEquality:
 class TestEngine:
     """PipelineAgent.engine — which engine the agent's steps run on."""
 
+    def test_api_engine(self):
+        assert PipelineAgent(name="a", engine="api").engine == "api"
+
+    def test_agents_on_different_engines_not_equal(self):
+        assert PipelineAgent(name="a", engine="sdk") != PipelineAgent(name="a", engine="api")
+
     def test_unknown_engine_is_refused_at_definition(self):
         with pytest.raises(ValueError, match="engine 'gpt'"):
             PipelineAgent(name="a", engine="gpt")
