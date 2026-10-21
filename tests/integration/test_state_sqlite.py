@@ -108,3 +108,38 @@ class TestSQLiteStateManagerIntegration:
         assert state.args == {"key": "value"}
         assert state.current_step == "s2"
         assert "s" in state.step_results
+
+
+class TestTranscripts:
+    """The api engine's transcripts: saved after every step, loaded on resume."""
+
+    MESSAGES = [
+        {"role": "user", "content": "Classify this."},
+        {"role": "assistant", "content": [
+            {"type": "thinking", "thinking": "", "signature": "sig=="},
+            {"type": "text", "text": "It's a question — «quoted» 🎉"},
+            {"type": "tool_use", "id": "toolu_1", "name": "classify", "input": {"category": "question"}},
+        ]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_1", "content": [{"type": "text", "text": '{"ok": true}'}]},
+        ]},
+    ]
+
+    def test_round_trip(self, state_manager):
+        state_manager.save_transcript("t1", self.MESSAGES)
+        assert state_manager.load_transcript("t1") == self.MESSAGES
+
+    def test_a_later_save_replaces_the_earlier_one(self, state_manager):
+        state_manager.save_transcript("t1", self.MESSAGES[:1])
+        state_manager.save_transcript("t1", self.MESSAGES)
+        assert state_manager.load_transcript("t1") == self.MESSAGES
+
+    def test_unknown_id_is_none(self, state_manager):
+        assert state_manager.load_transcript("nope") is None
+
+    def test_survives_a_new_manager_on_the_same_file(self, tmp_path):
+        db_path = str(tmp_path / "transcripts.db")
+        writer = SQLiteStateManager.create(db_path)
+        writer.initialize_schema()
+        writer.save_transcript("t1", self.MESSAGES)
+        assert SQLiteStateManager.create(db_path).load_transcript("t1") == self.MESSAGES

@@ -1,8 +1,14 @@
-"""SQLite persistence for pipeline runs.
+"""SQLite persistence for pipeline runs and api-engine transcripts.
 
 Records each run and its per-step results so they can be inspected after the
 fact (get_run / list_runs). Runs execute start-to-finish in one process; there
 is no pause/resume. Step-level detail is logged to spool, not stored here.
+
+Also keeps the api engine's transcripts: the Messages API messages an agent has
+accumulated, saved after every step under a transcript id — the continuity
+handle a host passes back as PipelineAgent.resume to continue that agent's
+conversation on a later run (the sdk engine's equivalent lives in Claude Code's
+own session files).
 """
 
 from __future__ import annotations
@@ -58,6 +64,12 @@ class SQLiteStateManager:
     CREATE INDEX IF NOT EXISTS idx_pipeline_name ON pipeline_runs(pipeline_name);
     CREATE INDEX IF NOT EXISTS idx_status ON pipeline_runs(status);
     CREATE INDEX IF NOT EXISTS idx_created_at ON pipeline_runs(created_at);
+
+    CREATE TABLE IF NOT EXISTS transcripts (
+        id TEXT PRIMARY KEY,
+        messages TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
     '''
 
     def __init__(self, db_path: str):
@@ -75,7 +87,7 @@ class SQLiteStateManager:
         return cls(db_path)
 
     def initialize_schema(self) -> None:
-        """Create the pipeline_runs table if it doesn't exist."""
+        """Create the pipeline_runs and transcripts tables if they don't exist."""
         conn = self._get_connection()
         try:
             conn.executescript(self.SCHEMA_SQL)
@@ -196,5 +208,30 @@ class SQLiteStateManager:
         try:
             conn.execute("DELETE FROM pipeline_runs WHERE id = ?", (run_id,))
             conn.commit()
+        finally:
+            conn.close()
+
+    def save_transcript(self, transcript_id: str, messages: list) -> None:
+        """Store an api-engine transcript (its Messages API messages), replacing
+        any earlier save under the same id."""
+        conn = self._get_connection()
+        try:
+            conn.execute("""
+                INSERT INTO transcripts (id, messages) VALUES (?, ?)
+                ON CONFLICT(id) DO UPDATE
+                SET messages = excluded.messages, updated_at = CURRENT_TIMESTAMP
+            """, (transcript_id, json.dumps(messages)))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def load_transcript(self, transcript_id: str) -> Optional[list]:
+        """Load a transcript's messages, or None if no transcript has that id."""
+        conn = self._get_connection()
+        try:
+            row = conn.execute(
+                "SELECT messages FROM transcripts WHERE id = ?", (transcript_id,)
+            ).fetchone()
+            return json.loads(row['messages']) if row else None
         finally:
             conn.close()
