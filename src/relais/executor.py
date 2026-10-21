@@ -259,6 +259,8 @@ class PipelineOrchestrator:
         last_output = None
         last_step_name = None
         visits: Dict[str, int] = {}
+        # Every step's latest output by name — what a step's `reads` draws on.
+        outputs: Dict[str, dict] = {}
 
         while current_step_name:
             step = config.steps.get(current_step_name)
@@ -295,6 +297,7 @@ class PipelineOrchestrator:
                         routing_data.update(hr)
                 next_step_name = step.resolve_next(routing_data)
                 self.log.info("route", run=run_id, step=current_step_name, data=routing_data, next=next_step_name)
+                outputs[current_step_name] = routing_data
                 previous_result = routing_data
                 current_step_name = next_step_name
                 continue
@@ -315,6 +318,7 @@ class PipelineOrchestrator:
                 initial_input=step_input,
                 instructions_dir=Path(config.instructions_dir),
                 args=args,
+                earlier={name: outputs[name] for name in step.reads if name in outputs},
             )
             images = step_images
             step_input = None  # human/initial input is consumed by the first step only
@@ -331,6 +335,7 @@ class PipelineOrchestrator:
                 step=step, context=context, mcp_server=mcp_server, agent=agent, images=images,
             )
             routing_data = result.routing_data or {}
+            outputs[current_step_name] = routing_data
             next_step_name = step.resolve_next(routing_data)
 
             self.log.info(
@@ -549,8 +554,10 @@ class PipelineOrchestrator:
         initial_input: str,
         instructions_dir: Path,
         args: dict = None,
+        earlier: dict = None,
     ) -> str:
-        """Build the context prompt for a step."""
+        """Build the context prompt for a step. `earlier` is {step name: output}
+        for the steps this one `reads` — shown after the previous step's."""
         sections = []
 
         if initial_input:
@@ -561,6 +568,9 @@ class PipelineOrchestrator:
 
         if previous_result:
             sections.append(f"[Previous Step Output]\n{json.dumps(previous_result, indent=2)}")
+
+        for name, output in (earlier or {}).items():
+            sections.append(f"[Output of {name}]\n{json.dumps(output, indent=2)}")
 
         sections.append(f"[Current Step]\n{step.name}")
 

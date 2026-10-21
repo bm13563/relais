@@ -109,3 +109,17 @@ async def test_max_visits_bounds_a_revise_loop():
                                              conversational=False)
     assert ran == ["analyse", "check", "compose"]
     assert result["suspended"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_step_reads_the_named_earlier_outputs():
+    """A writer past a critic still sees the analyst: `reads` puts each named
+    step's latest output in the context as [Output of <step>]."""
+    step = PipelineStep(name="compose", instruction="c", instruction_text="Write.", response_tool="t",
+                        agent=PipelineAgent(name="a"), reads=["analyse"])
+    context = await _orchestrator()._build_step_context(
+        step, {"verdict": "accept"}, None, Path("/nowhere"), {},
+        earlier={"analyse": {"headlines": ["x"]}},
+    )
+    assert "[Previous Step Output]" in context and '"verdict": "accept"' in context
+    assert "[Output of analyse]" in context and '"headlines"' in context

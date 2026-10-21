@@ -361,6 +361,7 @@ PipelineStep(
     instruction: str,                   # Instruction file name (without .md)
     instruction_text: str = None,       # The instruction inline instead (no file read)
     max_visits: int = None,             # Cap on entries per run; past it, the default route
+    reads: List[str] = [],              # Earlier steps whose outputs this step is shown ([Output of <step>])
     response_tool: str,                 # Required: tool whose output is captured + routed
     tools: List[Union[str, Callable]] = [],  # Tools available for this step (enforced)
     hooks: List[Callable] = [],         # Context injection functions (sync or async)

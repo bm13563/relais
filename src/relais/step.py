@@ -36,6 +36,10 @@ class PipelineStep:
               - {"field": "field_name", "routes": [...], "default": "fallback"}
                 for conditional routing based on tool result
         agent: PipelineAgent instance to use for this step.
+        reads: Names of EARLIER steps whose latest outputs this step is shown, each
+               as an [Output of <step>] section — for a step that needs more than the
+               previous step's handoff (a writer that reads the analyst's findings
+               past the critic's verdict). A step not yet run is simply absent.
         max_visits: How many times one run may ENTER this step (None = no cap).
                     Past the cap the step is skipped and its `default` route taken —
                     the guard that bounds a revise-and-re-check loop (a critic step
@@ -57,6 +61,7 @@ class PipelineStep:
     next: dict = field(default_factory=lambda: {"default": None})
     agent: Optional['PipelineAgent'] = None
     await_input: bool = False
+    reads: List[str] = field(default_factory=list)
     max_visits: Optional[int] = None
     route: bool = False  # Pass-through: run hooks, route on their data, NO LLM call.
 
