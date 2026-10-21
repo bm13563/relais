@@ -155,6 +155,7 @@ class PipelineOrchestrator:
             effort=template.effort,
             resume=template.resume,
             env=template.env,
+            builtin_tools=template.builtin_tools,
         )
 
     def start_pipeline(
@@ -436,6 +437,9 @@ class PipelineOrchestrator:
                 options_kwargs["resume"] = agent.resume
             if agent.env:
                 options_kwargs["env"] = agent.env
+            if agent.builtin_tools is not None:
+                # The SDK's `tools`: the built-ins the client has at all ([] = none).
+                options_kwargs["tools"] = list(agent.builtin_tools)
             client = ClaudeSDKClient(options=ClaudeAgentOptions(**options_kwargs))
             await client.connect()
             agent.set_client(client)

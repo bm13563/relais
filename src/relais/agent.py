@@ -49,6 +49,12 @@ class PipelineAgent:
                "xhigh", "max"). None (default) leaves it to the SDK/model default.
                Higher effort spends more reasoning before answering — raise it for
                agents doing hard analysis, lower it for cheap mechanical steps.
+        builtin_tools: Which of Claude Code's BUILT-IN tools (Read, Write, Edit,
+               Bash, Glob, Grep, WebSearch, …) this agent's client may have at all —
+               the SDK's `tools` option. None (default) leaves the SDK's default set in
+               place, gated only by permission_mode; [] removes every built-in, so the
+               agent has exactly its pipeline tools and nothing that can read the
+               host's files or environment — the setting for an agent inside a server.
         env: Extra environment variables for this agent's Claude Code subprocess,
                merged over the process environment (the SDK's `env` option). The
                host's way to hand a credential in explicitly — e.g.
@@ -70,6 +76,7 @@ class PipelineAgent:
     effort: Optional[str] = None
     resume: Optional[str] = None
     env: Optional[dict] = None
+    builtin_tools: Optional[list] = None
     steps_remaining: Optional[int] = field(default=None, init=False)
     client: Any = None  # ClaudeSDKClient; not imported to avoid a circular dep
 
@@ -112,4 +119,5 @@ class PipelineAgent:
             and self.effort == other.effort
             and self.resume == other.resume
             and self.env == other.env
+            and self.builtin_tools == other.builtin_tools
         )

@@ -385,6 +385,8 @@ PipelineAgent(
     resume: str = None,                 # Claude Code session id to resume
     env: dict = None,                   # Extra env for this agent's Claude Code subprocess,
                                         # e.g. {"ANTHROPIC_API_KEY": key} from the host's settings
+    builtin_tools: list = None,         # Claude Code built-ins the client may have at all;
+                                        # [] = none (an agent inside a server), None = the SDK default
 )
 ```
 
