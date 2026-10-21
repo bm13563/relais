@@ -63,6 +63,10 @@ class _Runtime:
         """Run a coroutine on the background loop and block for its result."""
         return asyncio.run_coroutine_threadsafe(coro, self.loop()).result()
 
+    async def asubmit(self, coro):
+        """Run a coroutine on the background loop and await it from the caller's loop."""
+        return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(coro, self.loop()))
+
 
 _runtime = _Runtime()
 
@@ -118,6 +122,15 @@ class Conversation:
             args=self._args,
         )
         _runtime.submit(self._spawn_driver())
+        log.info("conversation_started", conversation=self.id, run=self._run_id, pipeline=self._config.name)
+
+    async def _astart(self):
+        self._run_id = self._orchestrator.state_manager.create_pipeline_run(
+            pipeline_name=self._config.name,
+            start_step=self._config.start_step,
+            args=self._args,
+        )
+        await _runtime.asubmit(self._spawn_driver())
         log.info("conversation_started", conversation=self.id, run=self._run_id, pipeline=self._config.name)
 
     async def _spawn_driver(self):
@@ -177,6 +190,27 @@ class Conversation:
                 self._start()
             self._last_active = time.time()
             turn = _runtime.submit(self._send(text, images))
+            if not turn.awaiting:
+                self._closed = True
+                _conversations.pop(self.id, None)
+            return turn
+        finally:
+            self._turn_lock.release()
+
+    async def acontinue_conversation(self, text: str, images: list = None) -> Turn:
+        """Async variant of continue_conversation: awaits the turn on the caller's
+        loop instead of blocking the calling thread. Use from an async context
+        (e.g. a FastAPI ``async def`` route) so the caller's loop stays free while
+        the agent's turn runs on the conversation runtime."""
+        if self._closed:
+            raise RuntimeError("conversation is closed")
+        if not self._turn_lock.acquire(blocking=False):
+            raise RuntimeError("a turn is already in progress for this conversation")
+        try:
+            if self._inbox is None:
+                await self._astart()
+            self._last_active = time.time()
+            turn = await _runtime.asubmit(self._send(text, images))
             if not turn.awaiting:
                 self._closed = True
                 _conversations.pop(self.id, None)

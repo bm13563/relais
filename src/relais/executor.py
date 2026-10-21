@@ -45,6 +45,20 @@ class ResponseToolNotCalled(Exception):
     pass
 
 
+class StepError(Exception):
+    """Raised when a step ends in error (e.g. rate limit) before its response_tool ran.
+
+    Carries the step and agent names, the SDK's error kind (e.g. "rate_limit") and
+    the CLI's result text so a caller can decide what to do (sleep, switch model).
+    """
+    def __init__(self, step, agent, kind, text):
+        super().__init__(f"step '{step}' on agent '{agent}' failed ({kind}): {text}")
+        self.step = step
+        self.agent = agent
+        self.kind = kind
+        self.text = text
+
+
 @dataclass
 class PipelineConfig:
     """Configuration for a pipeline.
@@ -130,6 +144,7 @@ class PipelineOrchestrator:
             thinking=template.thinking,
             permission_mode=template.permission_mode,
             effort=template.effort,
+            resume=template.resume,
         )
 
     def start_pipeline(
@@ -373,6 +388,8 @@ class PipelineOrchestrator:
                 options_kwargs["max_thinking_tokens"] = 60000
             if agent.effort:
                 options_kwargs["effort"] = agent.effort
+            if agent.resume:
+                options_kwargs["resume"] = agent.resume
             client = ClaudeSDKClient(options=ClaudeAgentOptions(**options_kwargs))
             await client.connect()
             agent.set_client(client)
@@ -399,9 +416,13 @@ class PipelineOrchestrator:
         final_response = ""
         turns_used = 0
         is_error = False
+        error_kind = None
+        result_text = None
 
         async for message in client.receive_response():
             if isinstance(message, AssistantMessage):
+                if message.error:
+                    error_kind = message.error
                 for block in message.content:
                     if isinstance(block, TextBlock):
                         final_response = block.text
@@ -415,9 +436,13 @@ class PipelineOrchestrator:
             elif isinstance(message, ResultMessage):
                 turns_used = message.num_turns
                 is_error = message.is_error
+                result_text = message.result
 
         # Routing data is the output of the step's declared response tool.
         # response_tool is required on every step, so absence is a hard failure.
+        if is_error or error_kind:
+            raise StepError(step.name, agent.name, error_kind or "result_error", result_text or final_response)
+
         captured = self.tool_registry.get_tool_result(step.response_tool)
         if not captured:
             raise ResponseToolNotCalled(

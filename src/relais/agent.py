@@ -43,6 +43,8 @@ class PipelineAgent:
                that must run built-in Bash/file tools unattended (a "godmode"
                agent in a headless run, where no human is present to approve a
                Bash call); keep the default for agents that only need edits.
+        resume: Claude Code session id to resume when this agent's client connects
+               (None = a fresh session). The resumed transcript IS the agent's context.
         effort: Reasoning-effort level for this agent ("low", "medium", "high",
                "xhigh", "max"). None (default) leaves it to the SDK/model default.
                Higher effort spends more reasoning before answering — raise it for
@@ -61,6 +63,7 @@ class PipelineAgent:
     thinking: Optional[bool] = False
     permission_mode: str = "acceptEdits"
     effort: Optional[str] = None
+    resume: Optional[str] = None
     steps_remaining: Optional[int] = field(default=None, init=False)
     client: Any = None  # ClaudeSDKClient; not imported to avoid a circular dep
 
@@ -101,4 +104,5 @@ class PipelineAgent:
             and self.thinking == other.thinking
             and self.permission_mode == other.permission_mode
             and self.effort == other.effort
+            and self.resume == other.resume
         )

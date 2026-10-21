@@ -19,6 +19,7 @@ from .executor import (
     PipelineConfig,
     StepExecutionResult,
     ResponseToolNotCalled,
+    StepError,
 )
 from .pipeline import Pipeline, cleanup_all_pipeline_states
 from .conversation import Conversation, Turn, active_ids, is_active
@@ -40,6 +41,7 @@ __all__ = [
     "PipelineConfig",
     "StepExecutionResult",
     "ResponseToolNotCalled",
+    "StepError",
 
     # Agents
     "PipelineAgent",
