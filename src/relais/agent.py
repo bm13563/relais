@@ -49,6 +49,11 @@ class PipelineAgent:
                "xhigh", "max"). None (default) leaves it to the SDK/model default.
                Higher effort spends more reasoning before answering — raise it for
                agents doing hard analysis, lower it for cheap mechanical steps.
+        env: Extra environment variables for this agent's Claude Code subprocess,
+               merged over the process environment (the SDK's `env` option). The
+               host's way to hand a credential in explicitly — e.g.
+               {"ANTHROPIC_API_KEY": key} read from its own settings — rather than
+               rely on whatever the process inherited. None = inherit only.
         steps_remaining: Runtime counter for the current live instance (set from
                 steps when the instance is created). None for persistent agents.
         client: The live ClaudeSDKClient, set on first run and reused across the
@@ -64,6 +69,7 @@ class PipelineAgent:
     permission_mode: str = "acceptEdits"
     effort: Optional[str] = None
     resume: Optional[str] = None
+    env: Optional[dict] = None
     steps_remaining: Optional[int] = field(default=None, init=False)
     client: Any = None  # ClaudeSDKClient; not imported to avoid a circular dep
 
@@ -105,4 +111,5 @@ class PipelineAgent:
             and self.permission_mode == other.permission_mode
             and self.effort == other.effort
             and self.resume == other.resume
+            and self.env == other.env
         )

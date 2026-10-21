@@ -145,6 +145,7 @@ class PipelineOrchestrator:
             permission_mode=template.permission_mode,
             effort=template.effort,
             resume=template.resume,
+            env=template.env,
         )
 
     def start_pipeline(
@@ -398,6 +399,8 @@ class PipelineOrchestrator:
                 options_kwargs["effort"] = agent.effort
             if agent.resume:
                 options_kwargs["resume"] = agent.resume
+            if agent.env:
+                options_kwargs["env"] = agent.env
             client = ClaudeSDKClient(options=ClaudeAgentOptions(**options_kwargs))
             await client.connect()
             agent.set_client(client)

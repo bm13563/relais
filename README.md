@@ -249,6 +249,8 @@ machine; Anthropic's terms treat that as ordinary individual use of the Agent SD
 subscription — fine for your own experiments, never for anything that runs for other people,
 and a product may never offer a claude.ai login of its own
 (https://code.claude.com/docs/en/legal-and-compliance, "Authentication and credential use").
+A host that keeps the key in its own settings hands it in per agent instead of relying on the
+process environment: `PipelineAgent(..., env={"ANTHROPIC_API_KEY": key})`.
 
 ### Run Examples
 
@@ -373,6 +375,11 @@ PipelineAgent(
     max_turns: int = 10,                # Max model round-trips per step
     model: str = "opus",                # Model (opus, sonnet, haiku)
     thinking: bool = False,             # Enable extended thinking
+    permission_mode: str = "acceptEdits",  # SDK permission mode for built-in tools
+    effort: str = None,                 # Reasoning effort (low … max); None = default
+    resume: str = None,                 # Claude Code session id to resume
+    env: dict = None,                   # Extra env for this agent's Claude Code subprocess,
+                                        # e.g. {"ANTHROPIC_API_KEY": key} from the host's settings
 )
 ```
 
