@@ -6,10 +6,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
 
+from relais.engine import StepOutcome
+from relais.engines import SdkEngine
 from relais.executor import (
     PipelineOrchestrator,
     PipelineConfig,
     StepExecutionResult,
+    ResponseToolNotCalled,
+    StepError,
 )
 from relais.step import PipelineStep
 from relais.agent import PipelineAgent
@@ -17,6 +21,44 @@ from relais.agent import PipelineAgent
 
 # Test agent used across all tests
 test_agent = PipelineAgent(name="test_agent", model="opus")
+
+
+def outcome(**overrides) -> StepOutcome:
+    """A clean, successful StepOutcome, with any field overridden."""
+    fields = dict(
+        final_text="Done.", tool_calls=[], turns_used=1, is_error=False,
+        error_kind=None, result_text=None, session_id="sess-1", usage={},
+    )
+    fields.update(overrides)
+    return StepOutcome(**fields)
+
+
+class FakeEngine:
+    """Stands in for a real engine: returns a scripted StepOutcome and records
+    what the orchestrator asked of it. Installed as the orchestrator's "sdk"
+    engine (the default engine the test agents name)."""
+
+    name = "sdk"
+
+    def __init__(self, result: StepOutcome = None):
+        self.result = result or outcome()
+        self.calls = []
+        self.closed = []
+
+    async def run_step(self, **kwargs) -> StepOutcome:
+        self.calls.append(kwargs)
+        return self.result
+
+    async def close(self, agent) -> None:
+        self.closed.append(agent)
+        agent.client = None
+
+
+def captured_registry(captured=("test_tool", {"content": [{"type": "text", "text": '{"ok": true}'}]})):
+    """A registry mock whose response tool appears captured (None: never called)."""
+    registry = MagicMock()
+    registry.get_tool_result.return_value = captured
+    return registry
 
 
 class TestPipelineConfig:
@@ -410,7 +452,6 @@ class TestStartPipeline:
         mock_async.return_value = "run-123"
 
         mock_registry = MagicMock()
-        mock_registry.create_mcp_server.return_value = MagicMock()
 
         orchestrator = PipelineOrchestrator(
             tool_registry=mock_registry,
@@ -433,146 +474,160 @@ class TestStartPipeline:
 
 
 class TestExecuteStep:
-    """Tests for unified _execute_step method."""
+    """_execute_step: the step runs on its agent's engine; the outcome is read here."""
+
+    def _orchestrator(self, registry, engine, cwd=None):
+        orchestrator = PipelineOrchestrator(
+            tool_registry=registry, state_manager=MagicMock(),
+            instructions_dir=Path("/instructions"), cwd=cwd,
+        )
+        orchestrator._engines["sdk"] = engine
+        return orchestrator
+
+    def _step(self, **kwargs):
+        return PipelineStep(
+            name="main", instruction="test", response_tool="test_tool",
+            tools=kwargs.pop("tools", ["tool1", "tool2"]), agent=PipelineAgent(name="test_agent"), **kwargs,
+        )
 
     @pytest.mark.asyncio
     async def test_execute_step_sets_current_step(self):
-        """Test that step execution sets current step for tool validation."""
-        mock_registry = MagicMock()
-        mock_registry.get_allowed_tools.return_value = ["mcp__test__tool1"]
-        mock_registry.name = "test"
-        # The step's response tool must appear captured for routing extraction.
-        mock_registry.get_tool_result.return_value = (
-            "test_tool",
-            {"content": [{"type": "text", "text": '{"ok": true}'}]},
-        )
+        """The registry is gated to the step's tools before the engine runs."""
+        registry = captured_registry()
+        orchestrator = self._orchestrator(registry, FakeEngine())
+        step = self._step()
 
-        orchestrator = PipelineOrchestrator(
-            tool_registry=mock_registry,
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions")
-        )
+        await orchestrator._execute_step(step=step, context="Test", agent=step.agent)
 
-        from relais.agent import PipelineAgent
-        test_agent_local = PipelineAgent(name="test_agent")
+        registry.set_current_step.assert_called_once_with("main", ["tool1", "tool2"])
 
-        step = PipelineStep(
-            name="test_step",
-            instruction="test",
-            response_tool="test_tool",
-            tools=["tool1", "tool2"],
-            agent=test_agent_local
-        )
+    @pytest.mark.asyncio
+    async def test_hands_the_step_to_the_agents_engine(self):
+        registry = captured_registry()
+        engine = FakeEngine()
+        orchestrator = self._orchestrator(registry, engine)
+        sink = AsyncMock()
+        orchestrator._on_event = sink
+        step = self._step()
 
-        config = PipelineConfig(
-            name="test",
-            steps={"test_step": step},
-            start_step="test_step",
-            instructions_dir="/instructions"
-        )
+        await orchestrator._execute_step(step=step, context="Test context", agent=step.agent, images=["b64png"])
 
-        with patch('relais.executor.ClaudeSDKClient') as mock_sdk_class:
-            mock_client = MagicMock()
-            mock_sdk_class.return_value = mock_client
+        assert engine.calls == [{
+            "agent": step.agent, "step": step, "prompt": "Test context", "images": ["b64png"],
+            "registry": registry, "emit": sink, "verbose": False,
+        }]
 
-            async def mock_connect():
-                pass
-            mock_client.connect = mock_connect
-
-            async def mock_query(prompt):
-                pass
-            mock_client.query = mock_query
-
-            async def mock_receive():
-                result_msg = MagicMock()
-                result_msg.num_turns = 1
-                result_msg.is_error = False
-                type(result_msg).__name__ = "ResultMessage"
-                yield result_msg
-
-            mock_client.receive_response.return_value = mock_receive()
-
-            await orchestrator._execute_step(
-                step=step,
-                context="Test",
-                mcp_server=MagicMock(),
-                agent=test_agent_local
-            )
-
-            # Verify set_current_step was called with correct args
-            mock_registry.set_current_step.assert_called_once_with("test_step", ["tool1", "tool2"])
+    @pytest.mark.asyncio
+    async def test_no_images_is_an_empty_list(self):
+        engine = FakeEngine()
+        orchestrator = self._orchestrator(captured_registry(), engine)
+        step = self._step()
+        await orchestrator._execute_step(step=step, context="c", agent=step.agent)
+        assert engine.calls[0]["images"] == []
 
     @pytest.mark.asyncio
     async def test_execute_step_returns_result(self):
-        """Test that step execution returns proper result."""
-        mock_registry = MagicMock()
-        mock_registry.get_allowed_tools.return_value = ["mcp__test__tool1"]
-        mock_registry.name = "test"
-        # The step's response tool must appear captured for routing extraction.
-        mock_registry.get_tool_result.return_value = (
-            "test_tool",
-            {"content": [{"type": "text", "text": '{"ok": true}'}]},
+        """The result carries the outcome and the response tool's captured output."""
+        calls = [{"id": "t1", "tool": "test_tool", "input": {"ok": True}}]
+        usage = {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+        engine = FakeEngine(outcome(final_text="All done.", tool_calls=calls, turns_used=3, usage=usage))
+        orchestrator = self._orchestrator(captured_registry(), engine, cwd="/work")
+        step = self._step(tools=["tool1"])
+
+        result = await orchestrator._execute_step(step=step, context="Test context", agent=step.agent)
+
+        assert result.step_name == "main"
+        assert result.stop_reason == "success"
+        assert result.routing_data == {"ok": True}
+        assert result.final_response == "All done."
+        assert result.tool_results == calls
+        assert result.turns_used == 3
+        assert result.session_id == "sess-1"
+        assert result.usage == usage
+
+    @pytest.mark.asyncio
+    async def test_missing_response_tool_raises(self):
+        orchestrator = self._orchestrator(captured_registry(None), FakeEngine())
+        step = self._step()
+        with pytest.raises(ResponseToolNotCalled):
+            await orchestrator._execute_step(step=step, context="c", agent=step.agent)
+
+    @pytest.mark.asyncio
+    async def test_an_error_before_the_answer_is_a_step_error(self):
+        engine = FakeEngine(outcome(is_error=True, error_kind="rate_limit", result_text="429: slow down"))
+        orchestrator = self._orchestrator(captured_registry(None), engine)
+        step = self._step()
+
+        with pytest.raises(StepError) as raised:
+            await orchestrator._execute_step(step=step, context="c", agent=step.agent)
+
+        assert (raised.value.step, raised.value.agent) == ("main", "test_agent")
+        assert raised.value.kind == "rate_limit"
+        assert raised.value.text == "429: slow down"
+
+    @pytest.mark.asyncio
+    async def test_an_unnamed_error_falls_back_to_result_error_and_the_final_text(self):
+        engine = FakeEngine(outcome(is_error=True, error_kind=None, result_text=None, final_text="half an answer"))
+        orchestrator = self._orchestrator(captured_registry(None), engine)
+        step = self._step()
+
+        with pytest.raises(StepError) as raised:
+            await orchestrator._execute_step(step=step, context="c", agent=step.agent)
+
+        assert raised.value.kind == "result_error"
+        assert raised.value.text == "half an answer"
+
+    @pytest.mark.asyncio
+    async def test_an_error_after_the_answer_keeps_the_answer(self):
+        """The turn cap hit after the response tool ran: logged, not raised."""
+        engine = FakeEngine(outcome(is_error=True, error_kind="max_turns"))
+        orchestrator = self._orchestrator(captured_registry(), engine)
+        step = self._step()
+
+        result = await orchestrator._execute_step(step=step, context="c", agent=step.agent)
+
+        assert result.routing_data == {"ok": True}
+        assert result.stop_reason == "error"
+
+
+class TestEngines:
+    """The orchestrator's engines: one per name, made on first use; agents are
+    closed through the engine that ran them."""
+
+    def _orchestrator(self):
+        return PipelineOrchestrator(
+            tool_registry=MagicMock(), state_manager=MagicMock(),
+            instructions_dir=Path("/instructions"), cwd="/work",
         )
 
-        orchestrator = PipelineOrchestrator(
-            tool_registry=mock_registry,
-            state_manager=MagicMock(),
-            instructions_dir=Path("/instructions"),
-            cwd="/work"
-        )
+    def test_one_engine_per_name(self):
+        orchestrator = self._orchestrator()
+        first = orchestrator._engine(PipelineAgent(name="a"))
+        second = orchestrator._engine(PipelineAgent(name="b"))
+        assert isinstance(first, SdkEngine)
+        assert first is second
+        assert first.cwd == "/work"
 
-        from relais.agent import PipelineAgent
-        test_agent_local = PipelineAgent(name="test_agent")
+    @pytest.mark.asyncio
+    async def test_safe_close_goes_through_the_engine(self):
+        orchestrator = self._orchestrator()
+        engine = FakeEngine()
+        orchestrator._engines["sdk"] = engine
+        agent = PipelineAgent(name="a")
+        agent.set_client(object())
 
-        step = PipelineStep(
-            name="main",
-            instruction="test",
-            response_tool="test_tool",
-            tools=["tool1"],
-            agent=test_agent_local
-        )
+        await orchestrator._safe_close(agent)
 
-        config = PipelineConfig(
-            name="test",
-            steps={"main": step},
-            start_step="main",
-            instructions_dir="/instructions",
-            cwd="/work",
-            agents={"test_agent": test_agent_local}
-        )
+        assert engine.closed == [agent]
+        assert agent.client is None
 
-        with patch('relais.executor.ClaudeSDKClient') as mock_sdk_class:
-            mock_client = MagicMock()
-            mock_sdk_class.return_value = mock_client
-
-            async def mock_connect():
-                pass
-            mock_client.connect = mock_connect
-
-            async def mock_query(prompt):
-                pass
-            mock_client.query = mock_query
-
-            async def mock_receive():
-                result_msg = MagicMock()
-                result_msg.num_turns = 1
-                result_msg.is_error = False
-                result_msg.usage = None
-                type(result_msg).__name__ = "ResultMessage"
-                yield result_msg
-
-            mock_client.receive_response.return_value = mock_receive()
-
-            result = await orchestrator._execute_step(
-                step=step,
-                context="Test context",
-                mcp_server=MagicMock(),
-                agent=test_agent_local
-            )
-
-            # Verify result returned
-            assert result.step_name == "main"
-            assert result.stop_reason == "success"
+    @pytest.mark.asyncio
+    async def test_safe_close_logs_rather_than_raises(self):
+        orchestrator = self._orchestrator()
+        engine = FakeEngine()
+        engine.close = AsyncMock(side_effect=RuntimeError("cli gone"))
+        orchestrator._engines["sdk"] = engine
+        await orchestrator._safe_close(PipelineAgent(name="a"))  # should not raise
 
 
 class TestExecutePipelineLoop:
@@ -582,9 +637,6 @@ class TestExecutePipelineLoop:
     async def test_single_step_pipeline(self, test_instructions_dir):
         """Test executing a single-step pipeline."""
         mock_registry = MagicMock()
-        mock_registry.create_mcp_server.return_value = MagicMock()
-        mock_registry.get_allowed_tools.return_value = []
-        mock_registry.name = "test"
         # The step's response tool must appear captured for routing extraction.
         mock_registry.get_tool_result.return_value = (
             "test_tool",
@@ -640,9 +692,6 @@ class TestExecutePipelineLoop:
     async def test_multi_step_pipeline(self, test_instructions_dir):
         """Test executing a multi-step pipeline."""
         mock_registry = MagicMock()
-        mock_registry.create_mcp_server.return_value = MagicMock()
-        mock_registry.get_allowed_tools.return_value = []
-        mock_registry.name = "test"
         # The step's response tool must appear captured for routing extraction.
         mock_registry.get_tool_result.return_value = (
             "test_tool",
@@ -715,9 +764,6 @@ class TestExecutePipelineLoop:
     async def test_conditional_routing(self, test_instructions_dir):
         """Test pipeline with conditional routing."""
         mock_registry = MagicMock()
-        mock_registry.create_mcp_server.return_value = MagicMock()
-        mock_registry.get_allowed_tools.return_value = []
-        mock_registry.name = "test"
         # The step's response tool must appear captured for routing extraction.
         mock_registry.get_tool_result.return_value = (
             "test_tool",
@@ -798,9 +844,6 @@ class TestExecutePipelineLoop:
         """A steps=N agent expires after N steps; looping back to it spins up a
         fresh instance with a new client (clean context)."""
         mock_registry = MagicMock()
-        mock_registry.create_mcp_server.return_value = MagicMock()
-        mock_registry.get_allowed_tools.return_value = []
-        mock_registry.name = "test"
         mock_state = MagicMock()
 
         orchestrator = PipelineOrchestrator(
@@ -828,7 +871,7 @@ class TestExecutePipelineLoop:
         b_calls = {"n": 0}
         seen_instances = []  # the agent instance object passed to each step
 
-        async def mock_execute(step, context, mcp_server, agent, images=None):
+        async def mock_execute(step, context, agent, images=None):
             seen_instances.append(agent)
             # Give the live instance a fake client so we can see disconnects.
             if not agent.has_client():
@@ -857,7 +900,7 @@ class TestExecutePipelineLoop:
         assert seen_instances[1] is first_instance
         assert seen_instances[3] is second_instance
         assert second_instance is not first_instance
-        # The expired first instance had its client disconnected and cleared.
+        # The expired first instance had its client closed and cleared.
         assert first_instance.client is None
         assert first_instance.is_expired()
 
@@ -865,7 +908,6 @@ class TestExecutePipelineLoop:
     async def test_step_not_found_raises(self, test_instructions_dir):
         """Test that missing step raises error."""
         mock_registry = MagicMock()
-        mock_registry.create_mcp_server.return_value = MagicMock()
 
         orchestrator = PipelineOrchestrator(
             tool_registry=mock_registry,

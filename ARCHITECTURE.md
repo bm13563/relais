@@ -25,13 +25,16 @@ PipelineOrchestrator._execute_pipeline()
     │   _execute_step(step, context, agent)
     │       │
     │       ├── set_current_step(step.name, step.tools)  ← per-step tool gate
-    │       ├── Create/reuse ClaudeSDKClient for agent
-    │       ├── Send context via client.query(context)
-    │       ├── Stream response, capture messages
-    │       ├── Tool calls execute via MCP server
+    │       ├── engine.run_step(...) on the agent's engine (agent.engine)
     │       │       │
-    │       │       ├── Wrapper refuses tools not in step.tools
-    │       │       └── Allowed results appended to registry._tool_results
+    │       │       ├── sdk: create/reuse the agent's ClaudeSDKClient,
+    │       │       │        client.query(context), tools served as an MCP server
+    │       │       ├── api: create/reuse the agent's transcript, run the
+    │       │       │        Messages API tool loop in-process
+    │       │       ├── Every tool call goes through the registry wrapper:
+    │       │       │       ├── refuses tools not in step.tools
+    │       │       │       └── appends allowed results to registry._tool_results
+    │       │       └── Returns a StepOutcome (text, tool calls, turns, error, usage)
     │       │
     │       ▼
     │       Capture step.response_tool's output via
@@ -84,20 +87,22 @@ _build_step_context() for Step B
 ```
 PipelineAgent (live instance)
     │
-    ├── Connects one ClaudeSDKClient on first run
+    ├── Opens its engine state on first run (agent.client):
+    │   sdk → a ClaudeSDKClient (context lives in the CLI session)
+    │   api → a transcript (context is the Messages API messages,
+    │         saved to SQLite after every step)
     │   Reuses it across the steps this instance participates in
-    │   Conversation context lives in that client (RAM)
     │
     ├── steps=None → persists for the whole run
     │
     └── steps=N    → consume_step() after each step
-                     is_expired() at 0 → disconnect client now;
+                     is_expired() at 0 → engine.close(agent) now;
                      next route to this agent clones a fresh
                      instance with clean context (resets on loop-back)
 ```
 
 A run executes start-to-finish in one process. There is no pause/resume; two
-different agents have two different clients and therefore isolated context.
+different agents have two different engine states and therefore isolated context.
 
 ## Key Files
 
@@ -105,15 +110,17 @@ different agents have two different clients and therefore isolated context.
 |------|---------|
 | pipeline.py | High-level API: Pipeline.create(), Pipeline.run() |
 | executor.py | Core execution: _execute_pipeline(), _execute_step() |
-| tools.py | MCP tool registration, per-step gating, result capture |
+| engine.py | The engine seam: StepOutcome, Engine, StepEvents |
+| engines/sdk.py | sdk engine: Claude Code CLI via the Claude Agent SDK |
+| tools.py | Tool registration, per-step gating, result capture (engine-neutral) |
 | step.py | PipelineStep definition, routing logic |
-| agent.py | PipelineAgent definition + live client |
-| state.py | SQLite persistence for pipeline runs |
+| agent.py | PipelineAgent definition + its engine state |
+| state.py | SQLite persistence for pipeline runs (and api transcripts) |
 | logging_config.py | spool logging (per-pipeline JSONL streams) |
 
 ## Data Flow Summary
 
 1. **User Input** → passed to every step unchanged
-2. **Tool Result** → captured by MCP wrapper → becomes [Previous Step Output] for next step
+2. **Tool Result** → captured by the registry wrapper → becomes [Previous Step Output] for next step
 3. **Step Results** → persisted to SQLite for inspection (get_run / list_runs)
 4. **Step Events** → logged to spool as structured JSONL for tracing/debugging

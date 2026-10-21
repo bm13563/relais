@@ -5,9 +5,10 @@ but suspends at any step marked ``await_input``, returns control to the caller,
 and resumes when the caller provides the human's reply — with the pipeline's
 agents kept alive (in RAM) between turns, so they retain full context.
 
-The hard constraint this module solves: a live ClaudeSDKClient is bound to the
-asyncio loop and task it was created in, and its connect/disconnect must happen
-in the same task (anyio cancel-scope rule). So:
+The hard constraint this module solves: an agent's live engine state is bound to
+the asyncio loop it was created in — a ClaudeSDKClient (sdk engine) also to its
+task, as its connect/disconnect must happen in the same task (anyio cancel-scope
+rule); the api engine's HTTP client to its loop. So:
 
 - relais runs ONE persistent background event loop on a daemon thread (the
   conversation runtime). All conversation agent clients live there.
@@ -146,7 +147,6 @@ class Conversation:
         """
         orch = self._orchestrator
         run_agents: Dict[str, "object"] = {}
-        mcp_server = orch.tool_registry.create_mcp_server()
         next_step = self._config.start_step
         try:
             while True:
@@ -157,7 +157,7 @@ class Conversation:
                 try:
                     seg = await orch._run_segment(
                         self._run_id, self._config, next_step, text, self._args,
-                        run_agents, mcp_server, conversational=True, step_images=images,
+                        run_agents, conversational=True, step_images=images,
                     )
                 except Exception as e:
                     fut.set_exception(e)
@@ -173,7 +173,7 @@ class Conversation:
         finally:
             for agent in reversed(list(run_agents.values())):
                 if agent.has_client():
-                    await orch._safe_disconnect(agent)
+                    await orch._safe_close(agent)
 
     def continue_conversation(self, text: str, images: list = None) -> Turn:
         """Provide the next human input; run forward to the next suspension or the
@@ -224,7 +224,7 @@ class Conversation:
         return await fut
 
     def end_conversation(self):
-        """Tear down: disconnect agents, clear state, remove from the registry."""
+        """Tear down: close agents, clear state, remove from the registry."""
         if self._closed:
             return
         self._closed = True

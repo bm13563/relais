@@ -1,21 +1,27 @@
 """Agent definition for pipelines.
 
 A PipelineAgent is who runs a step: it owns a model, a turn budget, a step budget,
-and a fixed tool set. A live instance connects one ClaudeSDKClient when it first
-runs and keeps it across the steps it participates in, so its conversation context
-lives in the SDK client (in RAM). When its step budget is spent it expires; the
-next time the pipeline routes to that agent, a fresh instance with clean context
-takes over.
+a fixed tool set, and the engine its steps run on. A live instance opens its
+engine's per-agent state when it first runs — a Claude Code CLI client (sdk) or a
+transcript (api) — and keeps it across the steps it participates in, so its
+conversation context carries from step to step. When its step budget is spent it
+expires; the next time the pipeline routes to that agent, a fresh instance with
+clean context takes over.
 """
 
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Optional, List, Union, Any
 
+from .engines import ENGINES
+
 
 @dataclass
 class PipelineAgent:
     """An agent that executes pipeline steps.
+
+    Every field applies on both engines except those marked SDK-ONLY, which
+    configure the Claude Code CLI and are ignored by the api engine.
 
     Attributes:
         name: Unique identifier for this agent within a pipeline.
@@ -35,21 +41,27 @@ class PipelineAgent:
                feed the result back. A step that calls a tool, reads the result,
                then calls its response tool uses ~3 turns. Set lower to keep a
                step on a tight leash; raise it for agents that iterate.
-        model: Model for this agent (opus, sonnet, haiku).
-        thinking: Enable extended thinking for this agent.
-        permission_mode: How the SDK gates built-in tools for this agent's client
+        model: Model for this agent (opus, sonnet, haiku — or a full model id).
+        thinking: Enable extended thinking for this agent (sdk: a thinking-token
+               budget; api: adaptive thinking).
+        engine: What this agent's steps run on (default "sdk"):
+               "sdk" — a Claude Code CLI subprocess, driven by the Claude Agent SDK;
+               "api" — in-process on the Anthropic Messages API (relais.engines).
+        permission_mode: SDK-ONLY. How the SDK gates built-in tools for this agent's client
                (default "acceptEdits"). MCP pipeline tools are always gated by the
                registry regardless of this. Use "bypassPermissions" for an agent
                that must run built-in Bash/file tools unattended (a "godmode"
                agent in a headless run, where no human is present to approve a
                Bash call); keep the default for agents that only need edits.
-        resume: Claude Code session id to resume when this agent's client connects
-               (None = a fresh session). The resumed transcript IS the agent's context.
+        resume: The continuity handle to resume when this agent first runs (None =
+               a fresh start): a Claude Code session id (sdk) or a transcript id
+               (api — loaded from the run database). The resumed conversation IS
+               the agent's context. A step's session_id is the value to pass back.
         effort: Reasoning-effort level for this agent ("low", "medium", "high",
                "xhigh", "max"). None (default) leaves it to the SDK/model default.
                Higher effort spends more reasoning before answering — raise it for
                agents doing hard analysis, lower it for cheap mechanical steps.
-        builtin_tools: Which of Claude Code's BUILT-IN tools (Read, Write, Edit,
+        builtin_tools: SDK-ONLY. Which of Claude Code's BUILT-IN tools (Read, Write, Edit,
                Bash, Glob, Grep, WebSearch, …) this agent's client may have at all —
                the SDK's `tools` option. None (default) leaves the SDK's default set in
                place, gated only by permission_mode; [] removes every built-in, so the
@@ -60,10 +72,15 @@ class PipelineAgent:
                host's way to hand a credential in explicitly — e.g.
                {"ANTHROPIC_API_KEY": key} read from its own settings — rather than
                rely on whatever the process inherited. None = inherit only.
+               The api engine reads only env["ANTHROPIC_API_KEY"] (its client's
+               key; absent, the anthropic SDK reads the process environment) —
+               every other variable is SDK-ONLY. Likewise SDK-ONLY: the pipeline's
+               cwd and the CLI's setting sources.
         steps_remaining: Runtime counter for the current live instance (set from
                 steps when the instance is created). None for persistent agents.
-        client: The live ClaudeSDKClient, set on first run and reused across the
-                steps this instance participates in.
+        client: The engine's per-agent state — the live ClaudeSDKClient (sdk) or
+                the transcript (api) — set on first run, reused across the steps
+                this instance participates in, released by the engine's close().
     """
 
     name: str
@@ -77,10 +94,16 @@ class PipelineAgent:
     resume: Optional[str] = None
     env: Optional[dict] = None
     builtin_tools: Optional[list] = None
+    engine: str = "sdk"
     steps_remaining: Optional[int] = field(default=None, init=False)
-    client: Any = None  # ClaudeSDKClient; not imported to avoid a circular dep
+    client: Any = None  # the engine's per-agent state (see relais.engine)
 
     def __post_init__(self):
+        if self.engine not in ENGINES:
+            raise ValueError(
+                f"Agent '{self.name}' names engine '{self.engine}'; "
+                f"the engines are: {', '.join(ENGINES)}"
+            )
         self.steps_remaining = self.steps
 
     def consume_step(self) -> None:
@@ -93,17 +116,12 @@ class PipelineAgent:
         return self.steps_remaining is not None and self.steps_remaining <= 0
 
     def set_client(self, client: Any) -> None:
-        """Attach the live ClaudeSDKClient for this agent."""
+        """Attach the engine's per-agent state (a CLI client, a transcript)."""
         self.client = client
 
     def has_client(self) -> bool:
-        """Whether this agent already has a live client."""
+        """Whether this agent already holds live engine state."""
         return self.client is not None
-
-    async def disconnect(self) -> None:
-        """Disconnect the agent's client if it has one."""
-        if self.client is not None:
-            await self.client.disconnect()
 
     def __eq__(self, other: object) -> bool:
         """Agents are equal when their static configuration matches."""
@@ -120,4 +138,5 @@ class PipelineAgent:
             and self.resume == other.resume
             and self.env == other.env
             and self.builtin_tools == other.builtin_tools
+            and self.engine == other.engine
         )

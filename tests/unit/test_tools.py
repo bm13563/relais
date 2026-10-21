@@ -2,10 +2,10 @@
 
 import pytest
 from typing import Annotated
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock
 import asyncio
 
-from relais.tools import ToolRegistry, ToolDefinition
+from relais.tools import ToolRegistry, ToolDefinition, tool, tool_names
 
 
 class TestToolRegistryCreation:
@@ -30,12 +30,8 @@ class TestToolRegistryCreation:
 class TestToolRegistration:
     """Tests for tool registration via decorator."""
 
-    @patch('relais.tools.sdk_tool')
-    def test_register_simple_tool(self, mock_sdk_tool):
+    def test_register_simple_tool(self):
         """Test registering a simple tool."""
-        mock_decorated = MagicMock()
-        mock_sdk_tool.return_value = lambda f: mock_decorated
-
         registry = ToolRegistry("test")
 
         @registry.tool("greet", "Greet the user")
@@ -54,12 +50,8 @@ class TestToolRegistration:
             "required": ["name"],
         }
 
-    @patch('relais.tools.sdk_tool')
-    def test_register_tool_without_schema(self, mock_sdk_tool):
+    def test_register_tool_without_schema(self):
         """Test registering a tool without input schema."""
-        mock_decorated = MagicMock()
-        mock_sdk_tool.return_value = lambda f: mock_decorated
-
         registry = ToolRegistry("test")
 
         @registry.tool("simple", "A simple tool")
@@ -69,11 +61,8 @@ class TestToolRegistration:
         tool_def = registry.get("simple")
         assert tool_def.input_schema == {}
 
-    @patch('relais.tools.sdk_tool')
-    def test_register_multiple_tools(self, mock_sdk_tool):
+    def test_register_multiple_tools(self):
         """Test registering multiple tools."""
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-
         registry = ToolRegistry("multi")
 
         @registry.tool("tool1", "First tool")
@@ -90,11 +79,8 @@ class TestToolRegistration:
 
         assert set(registry.list_tools()) == {"tool1", "tool2", "tool3"}
 
-    @patch('relais.tools.sdk_tool')
-    def test_register_tool_complex_schema(self, mock_sdk_tool):
+    def test_register_tool_complex_schema(self):
         """Test registering a tool with complex input schema."""
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-
         registry = ToolRegistry("complex")
 
         @registry.tool("search", "Search with filters")
@@ -120,11 +106,8 @@ class TestToolRegistration:
 class TestToolRetrieval:
     """Tests for retrieving tools from registry."""
 
-    @patch('relais.tools.sdk_tool')
-    def test_get_existing_tool(self, mock_sdk_tool):
+    def test_get_existing_tool(self):
         """Test getting an existing tool."""
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-
         registry = ToolRegistry("test")
 
         @registry.tool("exists", "Exists")
@@ -141,11 +124,8 @@ class TestToolRetrieval:
         tool = registry.get("nonexistent")
         assert tool is None
 
-    @patch('relais.tools.sdk_tool')
-    def test_list_tools_order(self, mock_sdk_tool):
+    def test_list_tools_order(self):
         """Test that list_tools returns all registered tools."""
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-
         registry = ToolRegistry("test")
 
         @registry.tool("alpha", "Alpha")
@@ -162,232 +142,58 @@ class TestToolRetrieval:
         assert len(tools) == 2
 
 
-class TestGetAllowedTools:
-    """Tests for get_allowed_tools method."""
-
-    @patch('relais.tools.sdk_tool')
-    def test_get_allowed_tools_registered(self, mock_sdk_tool):
-        """Test getting allowed tools for registered tools."""
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-
-        registry = ToolRegistry("my_server")
-
-        @registry.tool("tool_a", "Tool A")
-        async def tool_a() -> dict:
-            return {"content": []}
-
-        @registry.tool("tool_b", "Tool B")
-        async def tool_b() -> dict:
-            return {"content": []}
-
-        allowed = registry.get_allowed_tools(["tool_a", "tool_b"])
-        assert allowed == ["mcp__my_server__tool_a", "mcp__my_server__tool_b"]
-
-    @patch('relais.tools.sdk_tool')
-    def test_get_allowed_tools_subset(self, mock_sdk_tool):
-        """Test getting allowed tools for a subset."""
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-
-        registry = ToolRegistry("server")
-
-        @registry.tool("a", "A")
-        async def a() -> dict:
-            return {"content": []}
-
-        @registry.tool("b", "B")
-        async def b() -> dict:
-            return {"content": []}
-
-        @registry.tool("c", "C")
-        async def c() -> dict:
-            return {"content": []}
-
-        # Only request a subset
-        allowed = registry.get_allowed_tools(["a", "c"])
-        assert allowed == ["mcp__server__a", "mcp__server__c"]
-
-    def test_get_allowed_tools_builtin_passthrough(self):
-        """Test that built-in tools pass through unchanged."""
-        registry = ToolRegistry("test")
-
-        # Built-in tools like Read, Write, Bash should pass through
-        allowed = registry.get_allowed_tools(["Read", "Write", "Bash"])
-        assert allowed == ["Read", "Write", "Bash"]
-
-    @patch('relais.tools.sdk_tool')
-    def test_get_allowed_tools_mixed(self, mock_sdk_tool):
-        """Test mixed registered and built-in tools."""
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-
-        registry = ToolRegistry("tools")
-
-        @registry.tool("custom", "Custom tool")
-        async def custom() -> dict:
-            return {"content": []}
-
-        allowed = registry.get_allowed_tools(["custom", "Read", "Bash"])
-        assert "mcp__tools__custom" in allowed
-        assert "Read" in allowed
-        assert "Bash" in allowed
-
-    def test_get_allowed_tools_empty_list(self):
-        """Test with empty tool list."""
-        registry = ToolRegistry("test")
-        allowed = registry.get_allowed_tools([])
-        assert allowed == []
-
-    def test_get_allowed_tools_unregistered(self):
-        """Test with unregistered tool names."""
-        registry = ToolRegistry("test")
-        # Unregistered tools pass through (treated as built-ins)
-        allowed = registry.get_allowed_tools(["unregistered"])
-        assert allowed == ["unregistered"]
-
-    @patch('relais.tools.sdk_tool')
-    def test_get_allowed_tools_with_function_reference(self, mock_sdk_tool):
-        """Test get_allowed_tools with @tool decorated function references."""
-        from relais.tools import tool
-
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-
-        registry = ToolRegistry("server")
-
-        # Register tools via registry
-        @registry.tool("tool_a", "Tool A")
-        async def tool_a() -> dict:
-            return {"content": []}
-
-        @registry.tool("tool_b", "Tool B")
-        async def tool_b() -> dict:
-            return {"content": []}
-
-        # Create standalone @tool decorated functions (simulating what users do)
-        @tool("tool_a", "Tool A")
-        async def standalone_a() -> dict:
-            return {"content": []}
-
-        @tool("tool_b", "Tool B")
-        async def standalone_b() -> dict:
-            return {"content": []}
-
-        # Pass function references instead of string names
-        allowed = registry.get_allowed_tools([standalone_a, standalone_b])
-        assert allowed == ["mcp__server__tool_a", "mcp__server__tool_b"]
-
-    @patch('relais.tools.sdk_tool')
-    def test_get_allowed_tools_mixed_functions_and_strings(self, mock_sdk_tool):
-        """Test get_allowed_tools with mix of functions and string names."""
-        from relais.tools import tool
-
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-
-        registry = ToolRegistry("tools")
-
-        @registry.tool("custom", "Custom tool")
-        async def custom() -> dict:
-            return {"content": []}
-
-        # Create standalone @tool decorated function
-        @tool("custom", "Custom tool")
-        async def custom_func() -> dict:
-            return {"content": []}
-
-        # Mix function reference with built-in string names
-        allowed = registry.get_allowed_tools([custom_func, "Read", "Bash"])
-        assert "mcp__tools__custom" in allowed
-        assert "Read" in allowed
-        assert "Bash" in allowed
-
-
-class TestCreateMcpServer:
-    """Tests for create_mcp_server method."""
-
-    @patch('relais.tools.create_sdk_mcp_server')
-    @patch('relais.tools.sdk_tool')
-    def test_create_mcp_server_basic(self, mock_sdk_tool, mock_create_server):
-        """Test creating MCP server."""
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-        mock_server = MagicMock()
-        mock_create_server.return_value = mock_server
-
-        registry = ToolRegistry("my_tools")
-
-        @registry.tool("test", "Test tool")
-        async def test() -> dict:
-            return {"content": []}
-
-        server = registry.create_mcp_server()
-
-        mock_create_server.assert_called_once()
-        call_kwargs = mock_create_server.call_args
-        assert call_kwargs[1]["name"] == "my_tools"
-        assert call_kwargs[1]["version"] == "1.0.0"
-        assert server == mock_server
-
-    @patch('relais.tools.create_sdk_mcp_server')
-    @patch('relais.tools.sdk_tool')
-    def test_create_mcp_server_custom_version(self, mock_sdk_tool, mock_create_server):
-        """Test creating MCP server with custom version."""
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-        mock_create_server.return_value = MagicMock()
-
-        registry = ToolRegistry("versioned")
-
-        @registry.tool("t", "T")
-        async def t() -> dict:
-            return {"content": []}
-
-        registry.create_mcp_server(version="2.5.0")
-
-        call_kwargs = mock_create_server.call_args
-        assert call_kwargs[1]["version"] == "2.5.0"
-
-    @patch('relais.tools.create_sdk_mcp_server')
-    def test_create_mcp_server_no_tools(self, mock_create_server):
-        """Test creating MCP server with no tools registered."""
-        mock_create_server.return_value = MagicMock()
-
-        registry = ToolRegistry("empty")
-        registry.create_mcp_server()
-
-        call_kwargs = mock_create_server.call_args
-        assert call_kwargs[1]["tools"] == []
-
-
 class TestToolDefinition:
     """Tests for ToolDefinition dataclass."""
 
     def test_tool_definition_creation(self):
         """Test creating a ToolDefinition."""
-        mock_sdk_tool = MagicMock()
+        fn = AsyncMock()
         definition = ToolDefinition(
             name="test_tool",
             description="A test tool",
-            input_schema={"arg": str},
-            sdk_tool=mock_sdk_tool
+            input_schema={"type": "object", "properties": {}},
+            fn=fn,
         )
         assert definition.name == "test_tool"
         assert definition.description == "A test tool"
-        assert definition.input_schema == {"arg": str}
-        assert definition.sdk_tool == mock_sdk_tool
+        assert definition.input_schema == {"type": "object", "properties": {}}
+        assert definition.fn is fn
 
     def test_tool_definition_equality(self):
         """Test ToolDefinition equality."""
-        mock_sdk = MagicMock()
-        def1 = ToolDefinition("tool", "desc", {"a": int}, mock_sdk)
-        def2 = ToolDefinition("tool", "desc", {"a": int}, mock_sdk)
+        fn = AsyncMock()
+        def1 = ToolDefinition("tool", "desc", {"a": int}, fn)
+        def2 = ToolDefinition("tool", "desc", {"a": int}, fn)
         assert def1 == def2
+
+    def test_registered_fn_is_what_the_decorator_returns(self):
+        """The decorated name is bound to the definition's fn: the wrapped tool."""
+        registry = ToolRegistry("test")
+
+        @registry.tool("t", "T")
+        async def t() -> dict:
+            return {"content": []}
+
+        assert registry.get("t").fn is t
+
+    def test_register_tool_function_wraps_it(self):
+
+        @tool("standalone", "Standalone")
+        async def standalone(x: Annotated[int, "x"]) -> dict:
+            return {"content": [{"type": "text", "text": str(x * 2)}]}
+
+        registry = ToolRegistry("test")
+        assert registry.register_tool_function(standalone) == "standalone"
+        result = asyncio.run(registry.get("standalone").fn({"x": 21}))
+        assert result == {"content": [{"type": "text", "text": "42"}]}
+        assert registry.get_tool_result("standalone") == ("standalone", result)
 
 
 class TestToolExecution:
     """Tests for actual tool execution (async)."""
 
-    @patch('relais.tools.sdk_tool')
-    def test_tool_returns_correct_format(self, mock_sdk_tool):
-        """Test that registered tool returns SDK-compatible format."""
-        # Make sdk_tool return the function itself for testing
-        mock_sdk_tool.return_value = lambda f: f
-
+    def test_tool_returns_correct_format(self):
+        """Test that a registered tool returns the MCP content format."""
         registry = ToolRegistry("test")
 
         @registry.tool("format_test", "Test format")
@@ -405,11 +211,8 @@ class TestToolExecution:
         assert isinstance(result["content"], list)
         assert result["content"][0]["type"] == "text"
 
-    @patch('relais.tools.sdk_tool')
-    def test_tool_receives_args_as_kwargs(self, mock_sdk_tool):
+    def test_tool_receives_args_as_kwargs(self):
         """Test that the args dict is unpacked into the tool's typed parameters."""
-        mock_sdk_tool.return_value = lambda f: f
-
         registry = ToolRegistry("test")
         received = {}
 
@@ -430,11 +233,8 @@ class TestToolExecution:
 class TestStepValidation:
     """Tests for step-based tool access validation."""
 
-    @patch('relais.tools.sdk_tool')
-    def test_set_current_step_with_string_tools(self, mock_sdk_tool):
+    def test_set_current_step_with_string_tools(self):
         """Test setting current step with string tool names."""
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-
         registry = ToolRegistry("test")
 
         @registry.tool("tool_a", "Tool A")
@@ -450,12 +250,9 @@ class TestStepValidation:
         assert registry._current_step_name == "step1"
         assert registry._current_allowed_tools == {"tool_a"}
 
-    @patch('relais.tools.sdk_tool')
-    def test_set_current_step_with_function_references(self, mock_sdk_tool):
+    def test_set_current_step_with_function_references(self):
         """Test setting current step with @tool decorated function references."""
-        from relais.tools import tool
 
-        mock_sdk_tool.return_value = lambda f: MagicMock()
 
         registry = ToolRegistry("test")
 
@@ -473,11 +270,8 @@ class TestStepValidation:
         assert registry._current_step_name == "step1"
         assert registry._current_allowed_tools == {"tool_a"}
 
-    @patch('relais.tools.sdk_tool')
-    def test_is_tool_allowed(self, mock_sdk_tool):
+    def test_is_tool_allowed(self):
         """Test checking if a tool is allowed in current step."""
-        mock_sdk_tool.return_value = lambda f: MagicMock()
-
         registry = ToolRegistry("test")
 
         @registry.tool("allowed", "Allowed")
@@ -493,12 +287,8 @@ class TestStepValidation:
         assert registry.is_tool_allowed("allowed") is True
         assert registry.is_tool_allowed("not_allowed") is False
 
-    @patch('relais.tools.sdk_tool')
-    def test_tool_validation_blocks_unauthorized_call(self, mock_sdk_tool):
+    def test_tool_validation_blocks_unauthorized_call(self):
         """Test that tool validation blocks unauthorized tool calls."""
-        # Make sdk_tool return the function itself for testing
-        mock_sdk_tool.return_value = lambda f: f
-
         registry = ToolRegistry("test")
 
         execution_count = {"count": 0}
@@ -524,11 +314,8 @@ class TestStepValidation:
         assert "is not available in step" in result["content"][0]["text"]
         assert "other_step" in result["content"][0]["text"]
 
-    @patch('relais.tools.sdk_tool')
-    def test_tool_validation_allows_authorized_call(self, mock_sdk_tool):
+    def test_tool_validation_allows_authorized_call(self):
         """Test that tool validation allows authorized tool calls."""
-        mock_sdk_tool.return_value = lambda f: f
-
         registry = ToolRegistry("test")
 
         execution_count = {"count": 0}
@@ -550,11 +337,8 @@ class TestStepValidation:
         # Verify normal result
         assert result["content"][0]["text"] == "Hello Bob"
 
-    @patch('relais.tools.sdk_tool')
-    def test_tool_validation_with_multiple_allowed_tools(self, mock_sdk_tool):
+    def test_tool_validation_with_multiple_allowed_tools(self):
         """Test tool validation with multiple tools allowed in a step."""
-        mock_sdk_tool.return_value = lambda f: f
-
         registry = ToolRegistry("test")
 
         @registry.tool("tool_a", "Tool A")
@@ -584,11 +368,8 @@ class TestStepValidation:
         assert "is not available in step" in result_c["content"][0]["text"]
         assert "tool_c" in result_c["content"][0]["text"]
 
-    @patch('relais.tools.sdk_tool')
-    def test_set_current_step_with_empty_tools(self, mock_sdk_tool):
+    def test_set_current_step_with_empty_tools(self):
         """Test setting current step with no allowed tools."""
-        mock_sdk_tool.return_value = lambda f: f
-
         registry = ToolRegistry("test")
 
         @registry.tool("any_tool", "Any tool")
@@ -605,3 +386,23 @@ class TestStepValidation:
         result = asyncio.run(any_tool({}))
         assert "is not available in step" in result["content"][0]["text"]
         assert "restricted_step" in result["content"][0]["text"]
+
+
+class TestToolNames:
+    def test_names_and_tool_functions_normalize_to_names(self):
+
+        @tool("decorated", "D")
+        async def decorated() -> dict:
+            return {"content": []}
+
+        assert tool_names(["plain", decorated, "Read"]) == ["plain", "decorated", "Read"]
+        assert tool_names(None) == []
+
+
+class TestRefusal:
+    def test_refusal_names_the_tool_the_step_and_what_it_has(self):
+        registry = ToolRegistry("test")
+        registry.set_current_step("intro", ["b_tool", "a_tool"])
+        assert registry._refusal("secret") == (
+            "Tool 'secret' is not available in step 'intro'. Available tools: a_tool, b_tool"
+        )

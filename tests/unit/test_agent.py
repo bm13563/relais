@@ -1,7 +1,7 @@
 """Unit tests for agent.py - PipelineAgent class."""
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 
 from relais.agent import PipelineAgent
 
@@ -19,6 +19,7 @@ class TestPipelineAgentCreation:
         assert agent.max_turns == 10  # Default turn budget
         assert agent.model == "opus"
         assert agent.thinking is False
+        assert agent.engine == "sdk"
         assert agent.client is None
 
     def test_max_turns_default(self):
@@ -74,7 +75,7 @@ class TestStepBudget:
 
 
 class TestClientManagement:
-    """Tests for SDK client management."""
+    """Tests for the engine-state slot (closing it is the engine's job)."""
 
     def test_set_client_assigns_client(self):
         agent = PipelineAgent(name="agent")
@@ -88,18 +89,6 @@ class TestClientManagement:
         agent.set_client(MagicMock())
         assert agent.has_client()
 
-    @pytest.mark.asyncio
-    async def test_disconnect_calls_client_disconnect(self):
-        agent = PipelineAgent(name="agent")
-        mock_client = AsyncMock()
-        agent.set_client(mock_client)
-        await agent.disconnect()
-        mock_client.disconnect.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_disconnect_without_client_no_error(self):
-        agent = PipelineAgent(name="agent")
-        await agent.disconnect()  # Should not raise
 
 
 class TestAgentEquality:
@@ -117,3 +106,11 @@ class TestAgentEquality:
         a = PipelineAgent(name="agent", model="opus")
         b = PipelineAgent(name="agent", model="haiku")
         assert a != b
+
+
+class TestEngine:
+    """PipelineAgent.engine — which engine the agent's steps run on."""
+
+    def test_unknown_engine_is_refused_at_definition(self):
+        with pytest.raises(ValueError, match="engine 'gpt'"):
+            PipelineAgent(name="a", engine="gpt")

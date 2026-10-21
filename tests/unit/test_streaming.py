@@ -6,7 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from relais import Pipeline, PipelineAgent, PipelineStep
-from relais.executor import PipelineOrchestrator
+from relais.engine import StepOutcome
+from relais.executor import PipelineConfig, PipelineOrchestrator
 
 
 def _orchestrator() -> PipelineOrchestrator:
@@ -94,7 +95,7 @@ async def test_max_visits_bounds_a_revise_loop():
                             agents={"a": agent})
     ran = []
 
-    async def fake_step(step, context, mcp_server, agent, images=None):
+    async def fake_step(step, context, agent, images=None):
         ran.append(step.name)
         data = {"verdict": "revise"} if step.name == "check" else {}
         return StepExecutionResult(step_name=step.name, final_response="", tool_results=[], turns_used=1,
@@ -105,7 +106,7 @@ async def test_max_visits_bounds_a_revise_loop():
 
     orchestrator._execute_step = fake_step
     orchestrator._build_step_context = fake_context
-    result = await orchestrator._run_segment("run-1", config, "analyse", "hi", {}, {}, MagicMock(),
+    result = await orchestrator._run_segment("run-1", config, "analyse", "hi", {}, {},
                                              conversational=False)
     assert ran == ["analyse", "check", "compose"]
     assert result["suspended"] is False
@@ -123,3 +124,47 @@ async def test_a_step_reads_the_named_earlier_outputs():
     )
     assert "[Previous Step Output]" in context and '"verdict": "accept"' in context
     assert "[Output of analyse]" in context and '"headlines"' in context
+
+
+@pytest.mark.asyncio
+async def test_step_done_carries_the_engines_usage():
+    """The engine's outcome reaches the stream: step_done carries its session and
+    usage, and the engine is handed the run's event sink."""
+    usage = {"input_tokens": 120, "output_tokens": 40, "cache_read_input_tokens": 100,
+             "cache_creation_input_tokens": 20}
+
+    class FakeEngine:
+        name = "sdk"
+        sinks = []
+
+        async def run_step(self, *, emit, **kwargs):
+            self.sinks.append(emit)
+            await emit({"type": "text_delta", "step": "s", "text": "Hi"})
+            return StepOutcome(final_text="Hi", tool_calls=[], turns_used=2, is_error=False, error_kind=None,
+                               result_text=None, session_id="t-1", usage=usage)
+
+        async def close(self, agent):
+            agent.client = None
+
+    registry = MagicMock()
+    registry.get_tool_result.return_value = ("t", {"content": [{"type": "text", "text": '{"ok": true}'}]})
+    orchestrator = PipelineOrchestrator(tool_registry=registry, state_manager=MagicMock(), instructions_dir=Path("/nowhere"))
+    engine = FakeEngine()
+    orchestrator._engines["sdk"] = engine
+    events = []
+
+    async def sink(event):
+        events.append(event)
+
+    orchestrator._on_event = sink
+    agent = PipelineAgent(name="a")
+    step = PipelineStep(name="s", instruction="s", instruction_text="Say hi.", response_tool="t", agent=agent)
+    config = PipelineConfig(name="p", steps={"s": step}, start_step="s", instructions_dir="/nowhere", agents={"a": agent})
+
+    await orchestrator._run_segment("run-1", config, "s", "hi", {}, {}, conversational=False)
+
+    assert engine.sinks == [sink]
+    assert [e["type"] for e in events] == ["step_start", "text_delta", "step_done"]
+    assert events[-1]["usage"] == usage
+    assert events[-1]["session_id"] == "t-1"
+    assert events[-1]["turns"] == 2

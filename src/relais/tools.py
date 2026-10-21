@@ -1,7 +1,18 @@
-"""Tool registry wrapping Claude Agent SDK's @tool decorator."""
+"""Pipeline tools: the @tool decorator, the registry, per-step gating, capture.
+
+Engine-neutral. A registered tool is a ToolDefinition whose `fn` is the tool as
+every engine calls it: an async (args: dict) -> dict that refuses the call when
+the tool is not in the current step's tools, runs the tool, captures its result
+for routing, and returns MCP-shaped content ({"content": [text / image blocks]}).
+The sdk engine serves those definitions to the CLI as an in-process MCP server;
+the api engine offers them to the Messages API and calls `fn` itself.
+"""
 
 from __future__ import annotations
+import functools
 import inspect
+import json
+import traceback
 from dataclasses import dataclass
 from typing import (
     Annotated,
@@ -15,8 +26,6 @@ from typing import (
     get_origin,
     get_type_hints,
 )
-
-from claude_agent_sdk import tool as sdk_tool, create_sdk_mcp_server
 
 from .logging_config import get_logger
 
@@ -78,7 +87,6 @@ class ToolResponse:
         If limit is set, truncates the output with a notice.
         Images are included as separate content blocks.
         """
-        import json
         content = []
 
         # Add text content (routing data as JSON)
@@ -185,12 +193,12 @@ def _extract_schema_from_signature(func: Callable) -> dict:
 
 
 def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_name: str = None) -> Callable:
-    """Wrap a tool function so the SDK can call it with a single args dict.
+    """Wrap a tool function so an engine can call it with a single args dict.
 
-    The SDK invokes tools as ``async def tool(args: dict) -> dict``. Tools in
-    Relais are defined with explicit, typed parameters; this wrapper unpacks the
-    args dict into keyword arguments, enforces per-step tool access, and captures
-    the result for routing.
+    Engines invoke tools as ``async def tool(args: dict) -> dict`` (the model's
+    tool input). Tools in Relais are defined with explicit, typed parameters;
+    this wrapper unpacks the args dict into keyword arguments, enforces per-step
+    tool access, and captures the result for routing.
 
     Args:
         func: The tool function (defined with typed parameters)
@@ -198,10 +206,8 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
         tool_name: Tool name used for access checks and capture
 
     Returns:
-        A wrapper with the SDK's ``(args: dict) -> dict`` signature
+        A wrapper with the engines' ``(args: dict) -> dict`` signature
     """
-    import functools
-
     sig = inspect.signature(func)
     param_names = [
         name for name, param in sig.parameters.items()
@@ -210,18 +216,17 @@ def _create_args_wrapper(func: Callable, registry: 'ToolRegistry' = None, tool_n
 
     @functools.wraps(func)
     async def wrapper(args: dict) -> dict:
-        import traceback
-
         # Validate tool access if registry provided
         if registry and tool_name:
             if not registry.is_tool_allowed(tool_name):
-                allowed = ", ".join(sorted(registry._current_allowed_tools))
-                error_msg = f"Tool '{tool_name}' is not available in step '{registry._current_step_name}'. Available tools: {allowed}"
-                log.warning("tool_blocked", tool=tool_name, step=registry._current_step_name, allowed=allowed)
+                log.warning(
+                    "tool_blocked", tool=tool_name, step=registry._current_step_name,
+                    allowed=", ".join(sorted(registry._current_allowed_tools)),
+                )
                 return {
                     "content": [{
                         "type": "text",
-                        "text": error_msg
+                        "text": registry._refusal(tool_name)
                     }]
                 }
 
@@ -313,6 +318,11 @@ def is_tool_function(obj: Any) -> bool:
     return callable(obj) and hasattr(obj, '_tool_name')
 
 
+def tool_names(tools) -> List[str]:
+    """Normalize a tools list (tool names, or @tool decorated functions) to names."""
+    return [t._tool_name if is_tool_function(t) else t for t in tools or []]
+
+
 @dataclass
 class ToolDefinition:
     """Definition of a tool available to pipeline steps.
@@ -320,20 +330,22 @@ class ToolDefinition:
     Attributes:
         name: Unique identifier for the tool
         description: Human-readable description for Claude
-        input_schema: Schema for the tool's input parameters
-        sdk_tool: The SDK tool instance created by @tool decorator
+        input_schema: JSON Schema for the tool's input parameters ({} = none)
+        fn: The tool as engines call it — async (args: dict) -> dict, the
+            output of _create_args_wrapper: gated on the current step, result
+            captured for routing, MCP-shaped return
     """
     name: str
     description: str
     input_schema: dict
-    sdk_tool: Any  # SdkMcpTool
+    fn: Callable[[dict], Awaitable[dict]]
 
 
 class ToolRegistry:
-    """Registry for pipeline tools using Claude Agent SDK.
+    """Registry for pipeline tools.
 
-    Wraps the SDK's @tool decorator to provide a registry pattern
-    that integrates with pipelines.
+    Holds each tool's definition, the current step's allow-list (the per-step
+    gate every call goes through) and the results captured during the step.
 
     Usage:
         from typing import Annotated
@@ -350,22 +362,18 @@ class ToolRegistry:
                 "content": [{"type": "text", "text": f"{greeting}, {name}!"}]
             }
 
-        # Get MCP server config for SDK options
-        server_config = registry.create_mcp_server()
-
-        # Get allowed_tools list for step
-        allowed = registry.get_allowed_tools(["greet"])
+        # Gate calls to the "intro" step's tools
+        registry.set_current_step("intro", ["greet"])
     """
 
     def __init__(self, name: str = "pipeline_tools"):
         """Initialize the registry.
 
         Args:
-            name: Name for the MCP server that will host these tools
+            name: The registry's name (the sdk engine's MCP server is named after it)
         """
         self._name = name
         self._tools: Dict[str, ToolDefinition] = {}
-        self._sdk_tools: List[Any] = []
         self._current_step_name: Optional[str] = None
         self._current_allowed_tools: set = set()
         self._tool_results: List[tuple] = []  # [(tool_name, result), ...]
@@ -378,8 +386,8 @@ class ToolRegistry:
     ) -> Callable:
         """Decorator for registering tools.
 
-        Uses the SDK's @tool decorator internally. Tools must be async
-        and return the SDK-expected format.
+        Tools must be async and return the MCP content format. The decorated
+        name is bound to the wrapped tool (the definition's `fn`).
 
         Parameter schema is automatically extracted from function signature.
         Use typing.Annotated to add descriptions to parameters.
@@ -403,29 +411,8 @@ class ToolRegistry:
                     "content": [{"type": "text", "text": result}]
                 }
         """
-        def decorator(func: Callable[..., Awaitable[dict]]) -> Any:
-            # Extract schema from function signature
-            schema = _extract_schema_from_signature(func)
-
-            log.info(f"Registering tool: {name}")
-            log.debug(f"Tool schema: {schema}")
-
-            # Wrap function to convert dict args to keyword arguments and validate access
-            wrapped = _create_args_wrapper(func, registry=self, tool_name=name)
-
-            # Create SDK tool using the @tool decorator
-            decorated = sdk_tool(name, description, schema)(wrapped)
-
-            # Store in our registry
-            self._tools[name] = ToolDefinition(
-                name=name,
-                description=description,
-                input_schema=schema,
-                sdk_tool=decorated
-            )
-            self._sdk_tools.append(decorated)
-
-            return decorated
+        def decorator(func: Callable[..., Awaitable[dict]]) -> Callable:
+            return self._register(name, description, _extract_schema_from_signature(func), func).fn
 
         return decorator
 
@@ -453,25 +440,22 @@ class ToolRegistry:
             log.debug(f"Tool '{name}' already registered, skipping")
             return name
 
+        self._register(name, description, schema, func)
+        return name
+
+    def _register(self, name: str, description: str, schema: dict, func: Callable) -> ToolDefinition:
+        """Wrap a tool function (dict args → keyword arguments, per-step access
+        check, result capture) and store its definition."""
         log.info(f"Registering tool: {name}")
         log.debug(f"Tool schema: {schema}")
-
-        # Wrap function to convert dict args to keyword arguments and validate access
-        wrapped = _create_args_wrapper(func, registry=self, tool_name=name)
-
-        # Create SDK tool using the @tool decorator
-        decorated = sdk_tool(name, description, schema)(wrapped)
-
-        # Store in our registry
-        self._tools[name] = ToolDefinition(
+        definition = ToolDefinition(
             name=name,
             description=description,
             input_schema=schema,
-            sdk_tool=decorated
+            fn=_create_args_wrapper(func, registry=self, tool_name=name),
         )
-        self._sdk_tools.append(decorated)
-
-        return name
+        self._tools[name] = definition
+        return definition
 
     def get(self, name: str) -> ToolDefinition | None:
         """Get a tool definition by name."""
@@ -481,47 +465,6 @@ class ToolRegistry:
         """Get list of all registered tool names."""
         return list(self._tools.keys())
 
-    def get_allowed_tools(self, tools: List) -> List[str]:
-        """Get MCP-formatted tool names for ClaudeAgentOptions.allowed_tools.
-
-        Args:
-            tools: List of tool names (strings) or @tool decorated functions
-
-        Returns:
-            List formatted for allowed_tools (mcp__{server}__{tool})
-        """
-        allowed = []
-        for item in tools:
-            # Handle @tool decorated functions
-            if callable(item) and hasattr(item, '_tool_name'):
-                name = item._tool_name
-            else:
-                name = item
-
-            if name in self._tools:
-                # SDK MCP tools are named: mcp__{server_name}__{tool_name}
-                allowed.append(f"mcp__{self._name}__{name}")
-            else:
-                # Allow built-in tools to pass through (Read, Write, Bash, etc.)
-                allowed.append(name)
-        return allowed
-
-    def create_mcp_server(self, version: str = "1.0.0"):
-        """Create an SDK MCP server config with all registered tools.
-
-        Args:
-            version: Server version string
-
-        Returns:
-            McpSdkServerConfig for ClaudeAgentOptions.mcp_servers
-        """
-        log.info(f"Creating MCP server '{self._name}' v{version} with {len(self._sdk_tools)} tools")
-        return create_sdk_mcp_server(
-            name=self._name,
-            version=version,
-            tools=self._sdk_tools
-        )
-
     def set_current_step(self, step_name: str, allowed_tools: List) -> None:
         """Set the current executing step and its allowed tools.
 
@@ -530,19 +473,9 @@ class ToolRegistry:
             allowed_tools: List of tool names or @tool functions allowed in this step
         """
         self._current_step_name = step_name
-
-        # Extract tool names from the allowed_tools list
-        tool_names = set()
-        for item in allowed_tools:
-            # Handle @tool decorated functions
-            if callable(item) and hasattr(item, '_tool_name'):
-                tool_names.add(item._tool_name)
-            elif isinstance(item, str):
-                tool_names.add(item)
-
-        self._current_allowed_tools = tool_names
+        self._current_allowed_tools = set(tool_names(allowed_tools))
         self._tool_results = []
-        log.debug(f"Set current step: {step_name}, allowed tools: {tool_names}")
+        log.debug(f"Set current step: {step_name}, allowed tools: {self._current_allowed_tools}")
 
     def is_tool_allowed(self, tool_name: str) -> bool:
         """Check if a tool is allowed in the current step.
@@ -558,9 +491,17 @@ class ToolRegistry:
             return True
         return tool_name in self._current_allowed_tools
 
+    def _refusal(self, tool_name: str) -> str:
+        """What the model is told when it calls a tool the current step doesn't have."""
+        allowed = ", ".join(sorted(self._current_allowed_tools))
+        return (
+            f"Tool '{tool_name}' is not available in step '{self._current_step_name}'. "
+            f"Available tools: {allowed}"
+        )
+
     @property
     def name(self) -> str:
-        """Get the registry/server name."""
+        """Get the registry name."""
         return self._name
 
     def get_tool_result(self, tool_name: str) -> Optional[tuple]:

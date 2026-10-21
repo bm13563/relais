@@ -1,8 +1,16 @@
-"""Pipeline execution engine using the Claude Agent SDK.
+"""Pipeline orchestration: steps, context, routing, state.
 
-Each agent connects one live ClaudeSDKClient on its first step and keeps it for
-the whole pipeline run, so its conversation context lives in the SDK client. A
-run executes start-to-finish in one process; results are persisted to SQLite for
+The orchestrator walks a pipeline step by step. For each step it builds the
+context prompt, gates the registry to the step's tools, and hands the step to
+its agent's engine (relais.engine — the Claude Code CLI via the Agent SDK, or
+the Messages API in-process), which runs the model's turn loop and reports a
+StepOutcome. Everything after that is engine-neutral and lives here: the
+response tool's captured output becomes the step's routing data, an error before
+the answer is a StepError, routing picks the next step, the result is persisted.
+
+Each agent keeps its engine state (a CLI client, a transcript) for the whole
+pipeline run, so its conversation context carries across its steps. A run
+executes start-to-finish in one process; results are persisted to SQLite for
 after-the-fact inspection. Step-level detail is logged to spool as structured
 events (see `spool` — query the JSONL stream to debug a run).
 """
@@ -10,26 +18,16 @@ events (see `spool` — query the JSONL stream to debug a run).
 from __future__ import annotations
 import asyncio
 import json
-import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from claude_agent_sdk import (
-    ClaudeSDKClient,
-    ClaudeAgentOptions,
-    AssistantMessage,
-    ResultMessage,
-    TextBlock,
-    ToolUseBlock,
-    StreamEvent,
-    SystemMessage,
-)
-
 from .step import PipelineStep
-from .tools import ToolRegistry
+from .tools import ToolRegistry, tool_names
 from .state import SQLiteStateManager
 from .agent import PipelineAgent
+from .engine import Engine
+from .engines import ENGINES
 from .logging_config import get_logger
 
 
@@ -50,8 +48,8 @@ class ResponseToolNotCalled(Exception):
 class StepError(Exception):
     """Raised when a step ends in error (e.g. rate limit) before its response_tool ran.
 
-    Carries the step and agent names, the SDK's error kind (e.g. "rate_limit") and
-    the CLI's result text so a caller can decide what to do (sleep, switch model).
+    Carries the step and agent names, the engine's error kind (e.g. "rate_limit")
+    and its result text so a caller can decide what to do (sleep, switch model).
     """
     def __init__(self, step, agent, kind, text):
         super().__init__(f"step '{step}' on agent '{agent}' failed ({kind}): {text}")
@@ -96,17 +94,20 @@ class StepExecutionResult:
     turns_used: int
     stop_reason: str  # 'success' or 'error'
     routing_data: Optional[dict] = None
-    # The Claude Code session the step ran in — what a host passes back as
+    # The step's continuity handle — the Claude Code session (sdk) or the
+    # transcript (api) it ran in — what a host passes back as
     # PipelineAgent.resume to continue the conversation on a later run.
     session_id: Optional[str] = None
+    # Token counts summed over the step (relais.engine.USAGE_KEYS); {} if unknown.
+    usage: dict = field(default_factory=dict)
 
 
 class PipelineOrchestrator:
-    """Runs pipelines step by step using the Claude Agent SDK.
+    """Runs pipelines step by step, each step on its agent's engine.
 
     Execution flow:
     1. Build the context prompt for the current step.
-    2. Run the step on its agent's live client (created once, reused).
+    2. Run the step on its agent's engine (its engine state made once, reused).
     3. Capture the step's response_tool output as routing data.
     4. Apply routing rules to pick the next step.
     5. Persist the step result to SQLite.
@@ -131,6 +132,8 @@ class PipelineOrchestrator:
         # an async callable that receives text_delta / tool_use / step_done events
         # as they happen. One streaming run at a time per orchestrator.
         self._on_event = None
+        # One engine per name, made on first use (see _engine()).
+        self._engines: Dict[str, Engine] = {}
 
     def register_pipeline(self, config: PipelineConfig) -> None:
         """Register a pipeline configuration."""
@@ -156,6 +159,7 @@ class PipelineOrchestrator:
             resume=template.resume,
             env=template.env,
             builtin_tools=template.builtin_tools,
+            engine=template.engine,
         )
 
     def start_pipeline(
@@ -178,7 +182,7 @@ class PipelineOrchestrator:
         args: dict = None,
     ) -> str:
         """The async twin of start_pipeline: awaits the run inside the CALLER's
-        event loop (an async web framework, an async job worker). Every SDK
+        event loop (an async web framework, an async job worker). Every engine
         client the run opens lives and dies within this one awaiting task, which
         is what the anyio cancel-scope rule needs. Returns the run ID."""
         config = self.pipelines.get(pipeline_name)
@@ -214,23 +218,22 @@ class PipelineOrchestrator:
     ) -> None:
         """Run a pipeline start-to-finish in one process (fire-and-forget).
 
-        Each agent is instantiated once and keeps its live client across every
+        Each agent is instantiated once and keeps its engine state across every
         step it runs. await_input is ignored here — a fire-and-forget run does
         not suspend.
         """
         run_agents: Dict[str, PipelineAgent] = {}
-        mcp_server = self.tool_registry.create_mcp_server()
         try:
             await self._run_segment(
                 run_id, config, config.start_step, initial_input, args,
-                run_agents, mcp_server, conversational=False,
+                run_agents, conversational=False,
             )
             self.state_manager.complete_pipeline(run_id)
             self.log.info("run_completed", run=run_id, pipeline=config.name)
         finally:
             for agent in reversed(list(run_agents.values())):
                 if agent.has_client():
-                    await self._safe_disconnect(agent)
+                    await self._safe_close(agent)
 
     async def _run_segment(
         self,
@@ -240,14 +243,13 @@ class PipelineOrchestrator:
         step_input: str,
         args: dict,
         run_agents: Dict[str, PipelineAgent],
-        mcp_server,
         conversational: bool,
         step_images: list = None,
     ) -> dict:
         """Run steps from start_step until the pipeline ends or (in conversational
         mode) a step with await_input suspends the run.
 
-        run_agents persists across calls so agents keep their live clients (and
+        run_agents persists across calls so agents keep their engine state (and
         context) between conversational turns. The caller owns teardown.
 
         Returns a dict: {"suspended": bool, "next_step": str|None, "step": str|None,
@@ -307,7 +309,7 @@ class PipelineOrchestrator:
             agent = run_agents.get(agent_name)
             if agent is not None and agent.is_expired():
                 if agent.has_client():
-                    await self._safe_disconnect(agent)
+                    await self._safe_close(agent)
                 agent = None
             if agent is None:
                 agent = self._clone_agent(step.agent)
@@ -327,14 +329,13 @@ class PipelineOrchestrator:
 
             self.log.info(
                 "step_start", run=run_id, step=current_step_name, agent=agent_name,
-                tools=_tool_names(step.tools), max_turns=agent.max_turns, model=agent.model or "opus",
+                tools=tool_names(step.tools), max_turns=agent.max_turns, model=agent.model or "opus",
+                engine=agent.engine,
             )
             self.log.debug("step_context", run=run_id, step=current_step_name, context=context)
 
             await self._emit({"type": "step_start", "run": run_id, "step": current_step_name, "agent": agent_name})
-            result = await self._execute_step(
-                step=step, context=context, mcp_server=mcp_server, agent=agent, images=images,
-            )
+            result = await self._execute_step(step=step, context=context, agent=agent, images=images)
             routing_data = result.routing_data or {}
             outputs[current_step_name] = routing_data
             next_step_name = step.resolve_next(routing_data)
@@ -342,7 +343,7 @@ class PipelineOrchestrator:
             self.log.info(
                 "step_done", run=run_id, step=current_step_name, agent=agent_name,
                 turns=result.turns_used, stop=result.stop_reason,
-                next=next_step_name or "END", routing_data=routing_data,
+                next=next_step_name or "END", routing_data=routing_data, usage=result.usage,
             )
             self.state_manager.update_pipeline_step(
                 run_id=run_id,
@@ -359,13 +360,13 @@ class PipelineOrchestrator:
             await self._emit({
                 "type": "step_done", "run": run_id, "step": current_step_name,
                 "routing_data": routing_data, "session_id": result.session_id,
-                "turns": result.turns_used, "next": next_step_name,
+                "turns": result.turns_used, "next": next_step_name, "usage": result.usage,
             })
 
             agent.consume_step()
             if agent.is_expired() and agent.has_client():
                 self.log.debug("agent_expired", run=run_id, agent=agent_name)
-                await self._safe_disconnect(agent)
+                await self._safe_close(agent)
 
             last_output = routing_data
             last_step_name = current_step_name
@@ -379,153 +380,55 @@ class PipelineOrchestrator:
 
         return {"suspended": False, "next_step": None, "step": last_step_name, "output": last_output}
 
-    async def _safe_disconnect(self, agent: PipelineAgent) -> None:
-        """Disconnect an agent's client, logging (not raising) on error."""
+    def _engine(self, agent: PipelineAgent) -> Engine:
+        """The engine this agent's steps run on — one per name, made on first use."""
+        if agent.engine not in self._engines:
+            self._engines[agent.engine] = ENGINES[agent.engine](cwd=self.cwd, state_manager=self.state_manager)
+        return self._engines[agent.engine]
+
+    async def _safe_close(self, agent: PipelineAgent) -> None:
+        """Release an agent's engine state through its engine, logging (not
+        raising) on error. The engine clears agent.client either way."""
         try:
-            await agent.disconnect()
+            await self._engine(agent).close(agent)
         except Exception as e:
-            self.log.warning("disconnect_error", agent=agent.name, error=str(e))
-        finally:
-            agent.client = None
+            self.log.warning("close_error", agent=agent.name, error=str(e))
 
     async def _execute_step(
         self,
         step: PipelineStep,
         context: str,
-        mcp_server,
         agent: PipelineAgent,
         images: list = None,
     ) -> StepExecutionResult:
-        """Run one step on its agent's live client and capture routing data."""
-        # Per-step tool scoping. This is the HARD constraint: the MCP wrapper
-        # consults is_tool_allowed() on every call and refuses any tool not in
-        # step.tools, regardless of the SDK's own allowed_tools list.
+        """Run one step on its agent's engine and capture routing data."""
+        # Per-step tool scoping. This is the HARD constraint: every tool call goes
+        # through the registry's wrapper, which consults is_tool_allowed() and
+        # refuses any tool not in step.tools — whatever the engine offered the model.
         self.tool_registry.set_current_step(step.name, step.tools or [])
 
-        model = agent.model or "opus"
-        thinking = agent.thinking or False
-
-        reusing_client = agent.has_client()
-        if not reusing_client:
-            # allowed_tools is the SDK's per-client filter, set once at connect().
-            # Use the agent's full tool set; per-step scoping is enforced by the
-            # wrapper above.
-            allowed_tools = self.tool_registry.get_allowed_tools(agent.tools)
-            options_kwargs = {
-                "max_turns": agent.max_turns,
-                "model": model,
-                "mcp_servers": {self.tool_registry.name: mcp_server},
-                "allowed_tools": allowed_tools,
-                "permission_mode": agent.permission_mode,
-                "cwd": self.cwd,
-                # SDK isolation: do NOT load filesystem settings
-                # (~/.claude/settings.json etc). Those layers can silently override
-                # the agent's requested model (e.g. an effortLevel/model pin found
-                # there was downgrading opus to sonnet). An agent's config is defined
-                # here in code, not by the ambient machine's Claude Code settings.
-                "setting_sources": [],
-            }
-            if self._on_event is not None:
-                # Streaming: the SDK then yields a StreamEvent per API stream
-                # event, which is where text deltas come from.
-                options_kwargs["include_partial_messages"] = True
-            if thinking:
-                options_kwargs["max_thinking_tokens"] = 60000
-            if agent.effort:
-                options_kwargs["effort"] = agent.effort
-            if agent.resume:
-                options_kwargs["resume"] = agent.resume
-            if agent.env:
-                options_kwargs["env"] = agent.env
-            if agent.builtin_tools is not None:
-                # The SDK's `tools`: the built-ins the client has at all ([] = none).
-                options_kwargs["tools"] = list(agent.builtin_tools)
-            client = ClaudeSDKClient(options=ClaudeAgentOptions(**options_kwargs))
-            await client.connect()
-            agent.set_client(client)
-        else:
-            client = agent.client
-
-        if images:
-            content = [{"type": "text", "text": context}]
-            for img in images:
-                content.append({
-                    "type": "image",
-                    "source": {"type": "base64", "media_type": "image/png", "data": img},
-                })
-            # query() treats a str specially and any non-str as an async iterable
-            # of message dicts — so to send content blocks we stream one full user
-            # message of our own.
-            async def _one_message():
-                yield {"type": "user", "message": {"role": "user", "content": content}, "parent_tool_use_id": None}
-            await client.query(_one_message())
-        else:
-            await client.query(context)
-
-        tool_results = []
-        final_response = ""
-        turns_used = 0
-        is_error = False
-        error_kind = None
-        result_text = None
-        result_subtype = None
-        session_id = None
-        text_blocks = 0  # text content blocks seen this step — a new one is a new paragraph
-
-        async for message in client.receive_response():
-            # Every SDK message that knows the session names it; the last word wins.
-            session_id = getattr(message, "session_id", None) or session_id
-            if isinstance(message, AssistantMessage):
-                if message.error:
-                    error_kind = message.error
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        final_response = block.text
-                        if self._verbose:
-                            print(f"\n[{step.name}] {block.text}")
-                    elif isinstance(block, ToolUseBlock):
-                        self.log.debug("tool_call", step=step.name, tool=block.name, input=block.input)
-                        tool_results.append({"id": block.id, "tool": block.name, "input": block.input})
-                        await self._emit({"type": "tool_use", "step": step.name, "name": block.name, "input": block.input})
-                        if self._verbose:
-                            print(f"\n[{step.name}] Tool: {block.name}  {block.input}")
-            elif isinstance(message, StreamEvent):
-                # A raw API stream event (only with include_partial_messages):
-                # the text deltas are what a host streams to its user. The model's
-                # prose comes in BLOCKS around its tool calls; a host that joins
-                # the deltas would glue "…the SOC launch.Three of the…" — so a
-                # new text block after the first is a paragraph break.
-                ev = message.event
-                if ev.get("type") == "content_block_start" and ev.get("content_block", {}).get("type") == "text":
-                    if text_blocks:
-                        await self._emit({"type": "text_delta", "step": step.name, "text": "\n\n"})
-                    text_blocks += 1
-                elif ev.get("type") == "content_block_delta" and ev.get("delta", {}).get("type") == "text_delta":
-                    await self._emit({"type": "text_delta", "step": step.name, "text": ev["delta"]["text"]})
-            elif isinstance(message, SystemMessage):
-                if message.subtype == "init":
-                    session_id = message.data.get("session_id") or session_id
-            elif isinstance(message, ResultMessage):
-                turns_used = message.num_turns
-                is_error = message.is_error
-                result_text = message.result
-                result_subtype = message.subtype
+        outcome = await self._engine(agent).run_step(
+            agent=agent, step=step, prompt=context, images=images or [],
+            registry=self.tool_registry, emit=self._on_event, verbose=self._verbose,
+        )
+        for call in outcome.tool_calls:
+            self.log.debug("tool_call", step=step.name, tool=call["tool"], input=call["input"])
 
         # Routing data is the output of the step's declared response tool.
         # response_tool is required on every step, so absence is a hard failure.
-        # A step whose response tool WAS called has its answer: an error the SDK
+        # A step whose response tool WAS called has its answer: an error the engine
         # reports after that — the turn cap hit while the model carried on past
         # its answer — is logged, not raised (the agent said what it had to say).
         captured = self.tool_registry.get_tool_result(step.response_tool)
-        if (is_error or error_kind) and not captured:
+        if (outcome.is_error or outcome.error_kind) and not captured:
             raise StepError(
-                step.name, agent.name, error_kind or result_subtype or "result_error",
-                result_text or final_response,
+                step.name, agent.name, outcome.error_kind or "result_error",
+                outcome.result_text or outcome.final_text,
             )
-        if is_error or error_kind:
+        if outcome.is_error or outcome.error_kind:
             self.log.warning(
                 "step_error_after_answer", step=step.name, agent=agent.name,
-                kind=error_kind or result_subtype, turns=turns_used,
+                kind=outcome.error_kind, turns=outcome.turns_used,
             )
         if not captured:
             raise ResponseToolNotCalled(
@@ -540,12 +443,13 @@ class PipelineOrchestrator:
 
         return StepExecutionResult(
             step_name=step.name,
-            final_response=final_response,
-            tool_results=tool_results,
-            turns_used=turns_used,
-            stop_reason='error' if is_error else 'success',
+            final_response=outcome.final_text,
+            tool_results=outcome.tool_calls,
+            turns_used=outcome.turns_used,
+            stop_reason='error' if outcome.is_error else 'success',
             routing_data=routing_data,
-            session_id=session_id,
+            session_id=outcome.session_id,
+            usage=outcome.usage,
         )
 
     async def _emit(self, event: dict) -> None:
@@ -599,11 +503,11 @@ class PipelineOrchestrator:
             else:
                 self.log.warning("instruction_missing", step=step.name, path=str(instruction_path))
 
-        tool_names = _tool_names(step.tools)
-        if tool_names:
+        names = tool_names(step.tools)
+        if names:
             sections.append(
                 f"[Available Tools]\n"
-                f"For this step, you should use: {', '.join(tool_names)}\n"
+                f"For this step, you should use: {', '.join(names)}\n"
                 f"Other tools are not available for this step and will be blocked if called."
             )
 
@@ -639,13 +543,3 @@ class PipelineOrchestrator:
                     return {"response": item.get("text")}
         return None
 
-
-def _tool_names(tools) -> List[str]:
-    """Normalize a tools list (strings or @tool functions) to names."""
-    names = []
-    for t in tools or []:
-        if callable(t) and hasattr(t, '_tool_name'):
-            names.append(t._tool_name)
-        elif isinstance(t, str):
-            names.append(t)
-    return names

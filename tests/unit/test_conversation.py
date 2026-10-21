@@ -68,7 +68,7 @@ class TestRunSegmentSuspend:
         config = PipelineConfig(name="c", steps=steps, start_step="await", instructions_dir=str(test_instructions_dir))
 
         seg = await orch._run_segment(
-            "run", config, "await", None, {}, {}, MagicMock(), conversational=True,
+            "run", config, "await", None, {}, {}, conversational=True,
         )
         # Pure-park entry with no input -> suspends right away at the entry, next is 'work'.
         assert seg["suspended"] is True
@@ -84,12 +84,12 @@ class TestRunSegmentSuspend:
         }
         config = PipelineConfig(name="c", steps=steps, start_step="await", instructions_dir=str(test_instructions_dir))
 
-        async def fake_step(step, context, mcp_server, agent, images=None):
+        async def fake_step(step, context, agent, images=None):
             return StepExecutionResult(step.name, "", [], 1, "success", routing_data={"ok": True})
 
         with patch.object(orch, "_execute_step", side_effect=fake_step):
             seg = await orch._run_segment(
-                "run", config, "await", "hello", {}, {}, MagicMock(), conversational=True,
+                "run", config, "await", "hello", {}, {}, conversational=True,
             )
         # Input present -> park is skipped, 'work' runs, pipeline ends (no suspend).
         assert seg["suspended"] is False
@@ -115,13 +115,13 @@ class TestRunSegmentSuspend:
 
         executed = []
 
-        async def fake_step(step, context, mcp_server, agent, images=None):
+        async def fake_step(step, context, agent, images=None):
             executed.append(step.name)
             return StepExecutionResult(step.name, "", [], 1, "success", routing_data={})
 
         with patch.object(orch, "_execute_step", side_effect=fake_step):
             seg = await orch._run_segment(
-                "run", config, "work", "hi", {}, {}, MagicMock(), conversational=True,
+                "run", config, "work", "hi", {}, {}, conversational=True,
             )
         # route ran no LLM (not in executed), but its hook sent us to 'brief'.
         assert executed == ["work", "brief"]
@@ -139,12 +139,12 @@ class TestRunSegmentSuspend:
         }
         config = PipelineConfig(name="c", steps=steps, start_step="summarize", instructions_dir=str(test_instructions_dir))
 
-        async def fake_step(step, context, mcp_server, agent, images=None):
+        async def fake_step(step, context, agent, images=None):
             return StepExecutionResult(step.name, "", [], 1, "success", routing_data={"summary": "done"})
 
         with patch.object(orch, "_execute_step", side_effect=fake_step):
             seg = await orch._run_segment(
-                "run", config, "summarize", "go", {}, {}, MagicMock(), conversational=True,
+                "run", config, "summarize", "go", {}, {}, conversational=True,
             )
         # summarize runs (produces output), THEN suspends; next is 'decide'.
         assert seg["suspended"] is True
@@ -163,12 +163,12 @@ class TestRunSegmentSuspend:
         }
         config = PipelineConfig(name="c", steps=steps, start_step="summarize", instructions_dir=str(test_instructions_dir))
 
-        async def fake_step(step, context, mcp_server, agent, images=None):
+        async def fake_step(step, context, agent, images=None):
             return StepExecutionResult(step.name, "", [], 1, "success", routing_data={})
 
         with patch.object(orch, "_execute_step", side_effect=fake_step):
             seg = await orch._run_segment(
-                "run", config, "summarize", "go", {}, {}, MagicMock(), conversational=False,
+                "run", config, "summarize", "go", {}, {}, conversational=False,
             )
         # Fire-and-forget: await_input is ignored, runs to the end.
         assert seg["suspended"] is False

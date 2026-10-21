@@ -1,7 +1,8 @@
 """Pipeline system for multi-step AI agent workflows.
 
-This module provides a high-level interface for defining and running pipelines
-using the Claude Agent SDK.
+This module provides a high-level interface for defining and running pipelines.
+Each step runs on its agent's engine — the Claude Code CLI via the Claude Agent
+SDK, or the Anthropic Messages API in-process (see relais.engine).
 """
 
 from __future__ import annotations
@@ -139,7 +140,7 @@ class Pipeline:
         state_manager = SQLiteStateManager.create(db_config)
 
         # Auto-register @tool decorated functions from agents and normalize to names
-        # Agent tools are what get registered with the SDK client
+        # (an agent's tools are its full set; each step scopes them further)
         for agent in agents.values():
             normalized_tools = []
             for t in agent.tools:
@@ -163,7 +164,7 @@ class Pipeline:
                     normalized_tools.append(t)
             step.tools = normalized_tools
 
-        # Create orchestrator (SDK handles authentication via Claude Code)
+        # Create orchestrator (each engine authenticates on its own — see README)
         orchestrator = PipelineOrchestrator(
             tool_registry=tool_registry,
             state_manager=state_manager,
@@ -203,7 +204,7 @@ class Pipeline:
     ):
         """Decorator for registering tools.
 
-        Tools must be async functions that return the SDK tool result format.
+        Tools must be async functions that return the MCP content format.
         Parameter schema is automatically extracted from function signature.
         Use typing.Annotated to add descriptions to parameters.
 
@@ -273,14 +274,19 @@ class Pipeline:
 
           {"type": "step_start", "run", "step", "agent"}  a step began on its agent
           {"type": "text_delta", "step", "text"}         a piece of the model's prose
-          {"type": "tool_use", "step", "name", "input"}  a tool the model called
+          {"type": "tool_use", "step", "name", "input"}  a tool the model called,
+                                                        by its registry name
           {"type": "step_done", "run", "step", "routing_data", "session_id",
-                                 "turns", "next"}         a step finished
+                                 "turns", "next", "usage"} a step finished; `usage`
+                                                        its token counts summed over
+                                                        the step ({} if unknown)
           {"type": "run_done", "run", "output", "session_id"}
                                                         the run finished: `output` is
                                                         the final step's routing data,
-                                                        `session_id` the Claude Code
-                                                        session to resume it with
+                                                        `session_id` the handle to
+                                                        resume it with (the Claude Code
+                                                        session on sdk, the transcript
+                                                        on api)
 
         An error in the run is raised from the iterator. Build one Pipeline per
         streaming run: the orchestrator holds one event sink at a time.
