@@ -152,7 +152,7 @@ class SdkEngine:
         else:
             await client.query(prompt)
 
-        events = StepEvents(emit, step.name, verbose)
+        events = StepEvents(emit, step, verbose)
         tool_calls = []
         final_text = ""
         turns_used = 0
@@ -179,12 +179,21 @@ class SdkEngine:
                         await events.tool_use(name, block.input)
             elif isinstance(message, StreamEvent):
                 # A raw API stream event (only with include_partial_messages):
-                # the text deltas are what a host streams to its user.
+                # the text deltas — and the step's `streams` argument, as the
+                # response-tool call is written — are what a host streams to its user.
                 ev = message.event
-                if ev.get("type") == "content_block_start" and ev.get("content_block", {}).get("type") == "text":
-                    await events.text_block_start()
-                elif ev.get("type") == "content_block_delta" and ev.get("delta", {}).get("type") == "text_delta":
-                    await events.text_delta(ev["delta"]["text"])
+                if ev.get("type") == "content_block_start":
+                    block = ev.get("content_block", {})
+                    if block.get("type") == "text":
+                        await events.text_block_start()
+                    elif block.get("type") == "tool_use":
+                        events.tool_block_start(ev["index"], registry_name(registry, block["name"]))
+                elif ev.get("type") == "content_block_delta":
+                    delta = ev.get("delta", {})
+                    if delta.get("type") == "text_delta":
+                        await events.text_delta(delta["text"])
+                    elif delta.get("type") == "input_json_delta":
+                        await events.tool_input_delta(ev["index"], delta["partial_json"])
             elif isinstance(message, SystemMessage):
                 if message.subtype == "init":
                     session_id = message.data.get("session_id") or session_id

@@ -273,7 +273,8 @@ class Pipeline:
         chat surface). Yields dicts, in order:
 
           {"type": "step_start", "run", "step", "agent"}  a step began on its agent
-          {"type": "text_delta", "step", "text"}         a piece of the model's prose
+          {"type": "text_delta", "step", "text"}         a piece of the model's prose (or of
+                                                        the step's `streams` argument)
           {"type": "tool_use", "step", "name", "input"}  a tool the model called,
                                                         by its registry name
           {"type": "usage", "step", "model", "input_tokens", "output_tokens",

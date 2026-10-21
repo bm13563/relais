@@ -268,6 +268,15 @@ The api engine streams each model turn, so `astream()` sees the same `text_delta
 `tool_use` events, plus a `usage` event after every turn; every engine reports a step's
 summed token counts on `step_done` as `usage`.
 
+**Streaming an answer that lives in the response tool.** Some models return prose written
+in the same turn as a tool call as a thinking block (Sonnet 5.5 with thinking off) — so an
+answer written alongside the response-tool call never reaches the person. For a step whose
+deliverable is prose, put the answer in a string argument of the response tool and name it
+on the step: `PipelineStep(..., response_tool="finish", streams="answer")`. While the model
+writes the call, that argument's text goes out as `text_delta` events (a paragraph break
+first if prose came earlier in the step), on both engines; the tool's full input is still
+the step's output.
+
 ### Tool Definition
 
 Tools must be async and return the MCP content format. Use `Annotated` to describe parameters,
@@ -419,6 +428,8 @@ PipelineStep(
     instruction_text: str = None,       # The instruction inline instead (no file read)
     max_visits: int = None,             # Cap on entries per run; past it, the default route
     reads: List[str] = [],              # Earlier steps whose outputs this step is shown ([Output of <step>])
+    streams: str = None,                # One string argument of the response tool, streamed as
+                                        # text_delta while the model writes the call (see below)
     response_tool: str,                 # Required: tool whose output is captured + routed
     tools: List[Union[str, Callable]] = [],  # Tools available for this step (enforced)
     hooks: List[Callable] = [],         # Context injection functions (sync or async)

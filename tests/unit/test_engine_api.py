@@ -9,6 +9,7 @@ the transcript keeps growing after it is sent).
 
 import asyncio
 import copy
+import json
 from pathlib import Path
 from typing import Annotated
 from unittest.mock import patch
@@ -17,6 +18,7 @@ import anthropic
 import httpx2
 import pytest
 from anthropic.types import (
+    InputJSONDelta,
     Message,
     RawContentBlockDeltaEvent,
     RawContentBlockStartEvent,
@@ -95,9 +97,11 @@ def stub(monkeypatch):
     return client
 
 
-def turn(*blocks, stop_reason=None, usage=(10, 5, 0, 0)):
+def turn(*blocks, stop_reason=None, usage=(10, 5, 0, 0), json_chunk=7):
     """A scripted model turn: the stream events for `blocks` and the final Message.
-    stop_reason defaults to tool_use when a block is a tool call, else end_turn."""
+    stop_reason defaults to tool_use when a block is a tool call, else end_turn.
+    A tool call streams as the API streams it: a block start with empty input,
+    then its input JSON in `json_chunk`-character input_json_delta pieces."""
     if stop_reason is None:
         stop_reason = "tool_use" if any(b.type == "tool_use" for b in blocks) else "end_turn"
     events = []
@@ -109,7 +113,13 @@ def turn(*blocks, stop_reason=None, usage=(10, 5, 0, 0)):
                 events.append(RawContentBlockDeltaEvent(
                     type="content_block_delta", index=index, delta=TextDelta(type="text_delta", text=piece)))
         else:
-            events.append(RawContentBlockStartEvent(type="content_block_start", index=index, content_block=block))
+            events.append(RawContentBlockStartEvent(
+                type="content_block_start", index=index, content_block=block.model_copy(update={"input": {}})))
+            raw = json.dumps(block.input)
+            for at in range(0, len(raw), json_chunk):
+                events.append(RawContentBlockDeltaEvent(
+                    type="content_block_delta", index=index,
+                    delta=InputJSONDelta(type="input_json_delta", partial_json=raw[at:at + json_chunk])))
     message = Message(
         id="msg", type="message", role="assistant", model="claude-test", content=list(blocks),
         stop_reason=stop_reason, stop_sequence=None,
@@ -172,6 +182,11 @@ def registry():
     async def secret() -> dict:
         return {"content": [{"type": "text", "text": "the secret"}]}
 
+    @registry.tool("finish", "Hand over the answer — a response tool whose answer streams")
+    async def finish(answer: Annotated[str, "The answer, for the person"],
+                     sources: Annotated[list, "Pages used"] = None) -> dict:
+        return ToolResponse(data={"answer": answer, "sources": sources or []}).to_mcp()
+
     return registry
 
 
@@ -186,8 +201,9 @@ def make_agent(name="a", tools=("lookup", "classify"), **kwargs):
     return PipelineAgent(name=name, tools=list(tools), **kwargs)
 
 
-def make_step(agent, tools=("lookup", "classify"), name="s1", response_tool="classify"):
-    return PipelineStep(name=name, instruction="x", response_tool=response_tool, tools=list(tools), agent=agent)
+def make_step(agent, tools=("lookup", "classify"), name="s1", response_tool="classify", streams=None):
+    return PipelineStep(name=name, instruction="x", response_tool=response_tool, tools=list(tools), agent=agent,
+                        streams=streams)
 
 
 async def run(engine, agent, registry, *, step=None, prompt="Classify this.", images=(), emit=None):
@@ -590,6 +606,78 @@ class TestConsecutiveUserMessages:
         assert_alternates(sent)
         assert sent[-2] == {"role": "assistant", "content": [{"type": "text", "text": "B."}]}
         assert sent[-1] == {"role": "user", "content": "Step two."}
+
+
+ANSWER = 'Line one.\nShe said "hi" — café 😀 \\ done.'
+
+
+class TestStreamedAnswer:
+    """PipelineStep.streams: the response tool's string argument streams as text
+    while the model writes the call."""
+
+    def _agent_and_step(self, streams="answer"):
+        agent = make_agent("a", tools=["lookup", "finish"])
+        return agent, make_step(agent, tools=["lookup", "finish"], response_tool="finish", streams=streams)
+
+    async def _prose(self, stub, state, registry, turns, streams="answer"):
+        stub.messages.turns = turns
+        events = []
+
+        async def sink(event):
+            events.append(event)
+
+        agent, step = self._agent_and_step(streams)
+        outcome = await run(ApiEngine(state_manager=state), agent, registry, step=step, emit=sink)
+        return outcome, [e for e in events if e["type"] in ("text_delta", "tool_use")]
+
+    async def test_the_answer_streams_in_order_as_it_is_written(self, stub, state, registry):
+        outcome, events = await self._prose(stub, state, registry, [
+            turn(call("t1", "finish", {"sources": ["p1"], "answer": ANSWER}), json_chunk=5),
+        ])
+
+        deltas = [e["text"] for e in events if e["type"] == "text_delta"]
+        assert "".join(deltas) == ANSWER
+        assert len(deltas) > 3  # piece by piece, not at the end
+        assert events[-1] == {"type": "tool_use", "step": "s1", "name": "finish",
+                              "input": {"sources": ["p1"], "answer": ANSWER}}
+        # Nothing else changes: the full input is still the captured output.
+        _, result = registry.get_tool_result("finish")
+        assert json.loads(result["content"][0]["text"]) == {"answer": ANSWER, "sources": ["p1"]}
+        assert outcome.final_text == ""  # the answer was never a text block
+
+    async def test_a_paragraph_break_when_prose_came_first(self, stub, state, registry):
+        _, events = await self._prose(stub, state, registry, [
+            turn(text("Let me check."), call("t1", "lookup", {"query": "x"})),
+            turn(call("t2", "finish", {"answer": "It's x."}), json_chunk=1000),  # one delta
+        ])
+
+        assert [e.get("text", e.get("name")) for e in events] == [
+            "Let me", " check.", "lookup", "\n\n", "It's x.", "finish",
+        ]
+
+    async def test_without_streams_nothing_streams(self, stub, state, registry):
+        _, events = await self._prose(stub, state, registry, [turn(call("t1", "finish", {"answer": ANSWER}))],
+                                      streams=None)
+        assert [e["type"] for e in events] == ["tool_use"]
+
+    async def test_another_tool_with_the_same_argument_does_not_stream(self, stub, state, registry):
+        _, events = await self._prose(stub, state, registry, [
+            turn(call("t1", "lookup", {"query": "x", "answer": "a lookup argument"})),
+            turn(call("t2", "finish", {"answer": "Yes."}), json_chunk=1000),
+        ])
+        assert [e["text"] for e in events if e["type"] == "text_delta"] == ["Yes."]
+
+    async def test_an_absent_argument_streams_nothing(self, stub, state, registry):
+        agent = make_agent("a", tools=["finish"])
+        step = make_step(agent, tools=["finish"], response_tool="finish", streams="summary")
+        stub.messages.turns = [turn(call("t1", "finish", {"answer": "Yes."}))]
+        events = []
+
+        async def sink(event):
+            events.append(event)
+
+        await run(ApiEngine(state_manager=state), agent, registry, step=step, emit=sink)
+        assert [e["type"] for e in events if e["type"] in ("text_delta", "tool_use")] == ["tool_use"]
 
 
 class TestUsage:

@@ -167,7 +167,7 @@ class ApiEngine:
             agent.set_client(self._open(agent, _prefix(model, offered)))
         transcript = agent.client
         client = self._client(agent)
-        events = StepEvents(emit, step.name, verbose)
+        events = StepEvents(emit, step, verbose)
         # Built once: every turn sends the same system and tools; `messages` is
         # the transcript itself, so each turn sends it as it has grown.
         request = _request(agent, model, offered, transcript.messages)
@@ -363,14 +363,21 @@ def _user_content(prompt: str, images: list[str]):
 
 
 async def _turn(client: AsyncAnthropic, request: dict, events: StepEvents):
-    """One model turn, streamed: text deltas go out as they come; returns the
-    complete message."""
+    """One model turn, streamed: text deltas — and the step's `streams`
+    argument, as the response-tool call is written — go out as they come;
+    returns the complete message."""
     async with client.messages.stream(**request) as stream:
         async for event in stream:
-            if event.type == "content_block_start" and event.content_block.type == "text":
-                await events.text_block_start()
-            elif event.type == "content_block_delta" and event.delta.type == "text_delta":
-                await events.text_delta(event.delta.text)
+            if event.type == "content_block_start":
+                if event.content_block.type == "text":
+                    await events.text_block_start()
+                elif event.content_block.type == "tool_use":
+                    events.tool_block_start(event.index, event.content_block.name)
+            elif event.type == "content_block_delta":
+                if event.delta.type == "text_delta":
+                    await events.text_delta(event.delta.text)
+                elif event.delta.type == "input_json_delta":
+                    await events.tool_input_delta(event.index, event.delta.partial_json)
         return await stream.get_final_message()
 
 

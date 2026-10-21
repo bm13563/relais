@@ -98,10 +98,21 @@ def text_delta(text: str):
     return stream_event({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}})
 
 
-async def run(engine, agent, registry, *, script, prompt="Do the step.", images=(), emit=None):
-    """Run one step ("s1") with the fake client replaying `script`."""
+def tool_start(index: int, cli_name: str):
+    return stream_event({"type": "content_block_start", "index": index,
+                         "content_block": {"type": "tool_use", "id": f"tu{index}", "name": cli_name, "input": {}}})
+
+
+def input_delta(index: int, partial_json: str):
+    return stream_event({"type": "content_block_delta", "index": index,
+                         "delta": {"type": "input_json_delta", "partial_json": partial_json}})
+
+
+async def run(engine, agent, registry, *, script, prompt="Do the step.", images=(), emit=None, streams=None):
+    """Run one step ("s1", response tool classify) with the fake client replaying `script`."""
     FakeClient.script = script
-    step = PipelineStep(name="s1", instruction="x", response_tool="classify", tools=["classify"], agent=agent)
+    step = PipelineStep(name="s1", instruction="x", response_tool="classify", tools=["classify"], agent=agent,
+                        streams=streams)
     return await engine.run_step(agent=agent, step=step, prompt=prompt, images=list(images),
                                  registry=registry, emit=emit, verbose=False)
 
@@ -269,6 +280,47 @@ class TestEvents:
             {"type": "text_delta", "step": "s1", "text": "\n\n"},
             {"type": "text_delta", "step": "s1", "text": "Found it."},
         ]
+
+
+class TestStreamedAnswer:
+    """PipelineStep.streams on the sdk engine: the same extraction, from the
+    CLI's raw stream events (the tool named mcp__<server>__<tool>)."""
+
+    async def test_the_argument_streams_after_a_paragraph_break(self, fake_client, registry):
+        events = []
+
+        async def sink(event):
+            events.append(event)
+
+        tool_input = {"category": 'Line "a"\nb — é'}
+        raw = '{"category": "Line \\"a\\"\\nb \\u2014 \\u00e9"}'
+        script = [
+            text_start(), text_delta("Checking."),
+            tool_start(1, "mcp__pipe_tools__classify"),
+            *[input_delta(1, raw[at:at + 6]) for at in range(0, len(raw), 6)],
+            assistant(TextBlock(text="Checking."), ToolUseBlock(id="tu1", name="mcp__pipe_tools__classify", input=tool_input)),
+            result_message(),
+        ]
+        await run(SdkEngine(), PipelineAgent(name="a"), registry, script=script, emit=sink, streams="category")
+
+        texts = [e["text"] for e in events if e["type"] == "text_delta"]
+        assert texts[:2] == ["Checking.", "\n\n"]
+        assert "".join(texts[2:]) == tool_input["category"]
+        assert len(texts) > 4
+        assert events[-1] == {"type": "tool_use", "step": "s1", "name": "classify", "input": tool_input}
+
+    async def test_other_tools_do_not_stream(self, fake_client, registry):
+        events = []
+
+        async def sink(event):
+            events.append(event)
+
+        script = [
+            tool_start(0, "mcp__pipe_tools__lookup"), input_delta(0, '{"category": "not this"}'),
+            result_message(),
+        ]
+        await run(SdkEngine(), PipelineAgent(name="a"), registry, script=script, emit=sink, streams="category")
+        assert events == []
 
 
 class TestMcpNames:

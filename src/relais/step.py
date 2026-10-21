@@ -40,6 +40,14 @@ class PipelineStep:
                as an [Output of <step>] section — for a step that needs more than the
                previous step's handoff (a writer that reads the analyst's findings
                past the critic's verdict). A step not yet run is simply absent.
+        streams: The name of ONE string argument of the response tool whose value
+                 is streamed to the host as text_delta events while the model
+                 writes the call (None = nothing streams). For a step whose
+                 deliverable is prose for the person: the answer lives in the
+                 response tool's arguments — models that turn same-turn prose
+                 into thinking (a tool call in the turn) still show it — and the
+                 person reads it as it is written. The tool's full input is still
+                 the step's output. An argument the call leaves out streams nothing.
         max_visits: How many times one run may ENTER this step (None = no cap).
                     Past the cap the step is skipped and its `default` route taken —
                     the guard that bounds a revise-and-re-check loop (a critic step
@@ -62,6 +70,7 @@ class PipelineStep:
     agent: Optional['PipelineAgent'] = None
     await_input: bool = False
     reads: List[str] = field(default_factory=list)
+    streams: Optional[str] = None
     max_visits: Optional[int] = None
     route: bool = False  # Pass-through: run hooks, route on their data, NO LLM call.
 
