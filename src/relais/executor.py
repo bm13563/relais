@@ -459,6 +459,7 @@ class PipelineOrchestrator:
         is_error = False
         error_kind = None
         result_text = None
+        result_subtype = None
         session_id = None
 
         async for message in client.receive_response():
@@ -491,13 +492,24 @@ class PipelineOrchestrator:
                 turns_used = message.num_turns
                 is_error = message.is_error
                 result_text = message.result
+                result_subtype = message.subtype
 
         # Routing data is the output of the step's declared response tool.
         # response_tool is required on every step, so absence is a hard failure.
-        if is_error or error_kind:
-            raise StepError(step.name, agent.name, error_kind or "result_error", result_text or final_response)
-
+        # A step whose response tool WAS called has its answer: an error the SDK
+        # reports after that — the turn cap hit while the model carried on past
+        # its answer — is logged, not raised (the agent said what it had to say).
         captured = self.tool_registry.get_tool_result(step.response_tool)
+        if (is_error or error_kind) and not captured:
+            raise StepError(
+                step.name, agent.name, error_kind or result_subtype or "result_error",
+                result_text or final_response,
+            )
+        if is_error or error_kind:
+            self.log.warning(
+                "step_error_after_answer", step=step.name, agent=agent.name,
+                kind=error_kind or result_subtype, turns=turns_used,
+            )
         if not captured:
             raise ResponseToolNotCalled(
                 f"Step '{step.name}' requires response tool '{step.response_tool}' "
