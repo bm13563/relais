@@ -78,6 +78,17 @@ MODEL_ALIASES = {
     "opus": "claude-opus-5-5",
 }
 
+# How "thinking off" (PipelineAgent.thinking=False) is spelled, by model-id
+# prefix; any other model gets {"type": "disabled"}. Sonnet and Opus 5.5 reject
+# "disabled" and take "between_tools" — the model doesn't think before
+# responding, and the short updates it writes between tool calls come back as
+# thinking blocks; Haiku 5.5 is the other way round. When a new model changes
+# the rule, the API's own 400 names the shape it wants.
+THINKING_OFF = {
+    "claude-sonnet-5-5": "between_tools",
+    "claude-opus-5-5": "between_tools",
+}
+
 # Thinking counts toward max_tokens on the 5.x models: room for both.
 MAX_TOKENS = 32000
 MAX_RETRIES = 4  # the SDK retries connection errors, 408/409/429 and 5xx with backoff
@@ -305,9 +316,11 @@ def _request(agent: PipelineAgent, model: str, offered: list[dict], messages: li
     if offered:
         request["tools"] = offered[:-1] + [{**offered[-1], "cache_control": CACHE}]
     # Tri-state: None sends nothing (the model's default — the 5.x models
-    # think adaptively), True adaptive, False disabled (Opus 5.5 rejects it).
-    if agent.thinking is not None:
-        request["thinking"] = {"type": "adaptive" if agent.thinking else "disabled"}
+    # think adaptively), True adaptive, False the model's "off" (THINKING_OFF).
+    if agent.thinking is True:
+        request["thinking"] = {"type": "adaptive"}
+    elif agent.thinking is False:
+        request["thinking"] = {"type": _thinking_off(model)}
     if agent.effort:
         request["output_config"] = {"effort": agent.effort}
     return request
@@ -332,6 +345,11 @@ def _append_user(messages: list, content) -> None:
 def _blocks(content) -> list:
     """Message content as a list of blocks (a str is one text block)."""
     return [{"type": "text", "text": content}] if isinstance(content, str) else list(content)
+
+
+def _thinking_off(model: str) -> str:
+    """The thinking type that turns thinking off on this model (see THINKING_OFF)."""
+    return next((off for prefix, off in THINKING_OFF.items() if model.startswith(prefix)), "disabled")
 
 
 def _user_content(prompt: str, images: list[str]):

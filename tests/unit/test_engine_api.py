@@ -371,14 +371,20 @@ class TestRequest:
         await run(ApiEngine(state_manager=state), make_agent("a", effort="high"), registry)
         assert stub.messages.requests[0]["output_config"] == {"effort": "high"}
 
-    @pytest.mark.parametrize("thinking,sent", [
-        (None, None),                      # the model's default: no field at all
-        (True, {"type": "adaptive"}),
-        (False, {"type": "disabled"}),
+    @pytest.mark.parametrize("model,thinking,sent", [
+        ("sonnet", None, None),                         # the model's default: no field at all
+        ("haiku", None, None),
+        ("sonnet", True, {"type": "adaptive"}),
+        ("haiku", True, {"type": "adaptive"}),
+        ("haiku", False, {"type": "disabled"}),         # off, as Haiku 5.5 spells it
+        ("sonnet", False, {"type": "between_tools"}),   # off, as Sonnet / Opus 5.5 spell it
+        ("opus", False, {"type": "between_tools"}),
+        ("claude-sonnet-5-5-20261001", False, {"type": "between_tools"}),  # a prefix match
+        ("claude-fable-5-1", False, {"type": "disabled"}),                 # any other model
     ])
-    async def test_thinking_is_a_tri_state(self, stub, state, registry, thinking, sent):
+    async def test_thinking_is_a_tri_state(self, stub, state, registry, model, thinking, sent):
         stub.messages.turns = answered("ok")
-        await run(ApiEngine(state_manager=state), make_agent("a", thinking=thinking), registry)
+        await run(ApiEngine(state_manager=state), make_agent("a", model=model, thinking=thinking), registry)
 
         request = stub.messages.requests[0]
         if sent is None:

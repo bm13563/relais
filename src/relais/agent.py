@@ -48,9 +48,11 @@ class PipelineAgent:
                engine None does NOT mean no thinking.
                True — on: sdk, a thinking-token budget; api, adaptive thinking
                ({"type": "adaptive"}).
-               False — off: api, {"type": "disabled"}; sdk, nothing set (as
-               None). Claude Opus 5.5 rejects disabled thinking (a 400) — an
-               api agent on it must not pass False; lower `effort` instead.
+               False — off: api, the model's own "off" — {"type":
+               "between_tools"} on Claude Sonnet / Opus 5.5 (no thinking before
+               responding; the short updates between tool calls come back as
+               thinking blocks), {"type": "disabled"} on other models
+               (engines/api.py THINKING_OFF); sdk, nothing set (as None).
         engine: What this agent's steps run on (default "sdk"):
                "sdk" — a Claude Code CLI subprocess, driven by the Claude Agent SDK;
                "api" — in-process on the Anthropic Messages API (relais.engines).
