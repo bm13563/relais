@@ -354,7 +354,8 @@ class PipelineOrchestrator:
             self.log.info(
                 "step_done", run=run_id, step=current_step_name, agent=agent_name,
                 turns=result.turns_used, stop=result.stop_reason,
-                next=next_step_name or "END", routing_data=routing_data, usage=result.usage,
+                next=next_step_name or "END", usage=result.usage,
+                output_keys=sorted(routing_data) if isinstance(routing_data, dict) else type(routing_data).__name__,
             )
             self.state_manager.update_pipeline_step(
                 run_id=run_id,
