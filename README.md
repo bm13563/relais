@@ -244,8 +244,11 @@ Examples are in the `examples/pipelines/` directory.
 bundled Claude Code CLI (no separate install) and that process reads the key — relais itself
 never touches credentials. API-key auth bills at API rates and is the route for anything that
 runs for other people: Anthropic does not permit third-party products to ride on a claude.ai
-subscription login. On your own machine, with no key set, the CLI falls back to its own
-`claude` login — fine for local hacking, not for a deployment.
+subscription login. With no key set, the bundled CLI falls back to the `claude` login on that
+machine; Anthropic's terms treat that as ordinary individual use of the Agent SDK on your own
+subscription — fine for your own experiments, never for anything that runs for other people,
+and a product may never offer a claude.ai login of its own
+(https://code.claude.com/docs/en/legal-and-compliance, "Authentication and credential use").
 
 ### Run Examples
 
