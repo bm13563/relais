@@ -341,7 +341,7 @@ class TestRequest:
 
         request = stub.messages.requests[0]
         assert request["model"] == "claude-opus-5-5"
-        assert request["max_tokens"] == MAX_TOKENS == 16000
+        assert request["max_tokens"] == MAX_TOKENS == 32000
         assert request["system"] == [{"type": "text", "text": API_SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
         assert request["cache_control"] == {"type": "ephemeral"}  # automatic caching of the transcript tail
         assert request["messages"] == [{"role": "user", "content": "The step's prompt."}]

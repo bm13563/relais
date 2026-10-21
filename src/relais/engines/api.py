@@ -74,7 +74,8 @@ MODEL_ALIASES = {
     "opus": "claude-opus-5-5",
 }
 
-MAX_TOKENS = 16000
+# Thinking counts toward max_tokens on the 5.x models: room for both.
+MAX_TOKENS = 32000
 MAX_RETRIES = 4  # the SDK retries connection errors, 408/409/429 and 5xx with backoff
 CACHE = {"type": "ephemeral"}
 
