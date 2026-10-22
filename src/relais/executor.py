@@ -27,7 +27,7 @@ from .tools import ToolRegistry, tool_names
 from .state import SQLiteStateManager
 from .agent import PipelineAgent
 from .engine import Engine
-from .engines import ENGINES
+from .engines import engine_class
 from .logging_config import get_logger
 
 
@@ -395,7 +395,7 @@ class PipelineOrchestrator:
     def _engine(self, agent: PipelineAgent) -> Engine:
         """The engine this agent's steps run on — one per name, made on first use."""
         if agent.engine not in self._engines:
-            self._engines[agent.engine] = ENGINES[agent.engine](cwd=self.cwd, state_manager=self.state_manager)
+            self._engines[agent.engine] = engine_class(agent.engine)(cwd=self.cwd, state_manager=self.state_manager)
         return self._engines[agent.engine]
 
     async def _safe_close(self, agent: PipelineAgent) -> None:

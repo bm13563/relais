@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
 
 from relais.engine import StepOutcome
-from relais.engines import SdkEngine
+from relais.engines.sdk import SdkEngine
 from relais.executor import (
     PipelineOrchestrator,
     PipelineConfig,

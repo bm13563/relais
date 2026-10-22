@@ -242,6 +242,11 @@ Each agent's steps run on an **engine**, picked per agent with `PipelineAgent(en
 | `session_id` / `resume` | the Claude Code session id | the transcript id |
 | Tools | the pipeline's tools (served as an in-process MCP server) plus Claude Code built-ins | the pipeline's tools only — every request offers the agent's tools |
 
+An engine's module, and with it its SDK, is imported the first time a step needs that
+engine — not at `import relais` — so a host that runs only `"api"` never holds the
+Claude Agent SDK in memory, and one that runs only `"sdk"` never holds `anthropic`.
+Both SDKs are installed with relais, so either engine works wherever relais does.
+
 ```python
 analyst = PipelineAgent(name="analyst", tools=[search, report], engine="api", model="sonnet")
 ```
