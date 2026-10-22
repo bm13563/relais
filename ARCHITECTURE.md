@@ -118,11 +118,11 @@ different agents have two different engine states and therefore isolated context
 | step.py | PipelineStep definition, routing logic |
 | agent.py | PipelineAgent definition + its engine state |
 | state.py | SQLite persistence for pipeline runs (and api transcripts) |
-| logging_config.py | spool logging (per-pipeline JSONL streams) |
+| logging_config.py | events through the standard `logging` module (a NullHandler on "relais"; the host's handlers decide) |
 
 ## Data Flow Summary
 
 1. **User Input** → passed to every step unchanged
 2. **Tool Result** → captured by the registry wrapper → becomes [Previous Step Output] for next step
 3. **Step Results** → persisted to SQLite for inspection (get_run / list_runs)
-4. **Step Events** → logged to spool as structured JSONL for tracing/debugging
+4. **Step Events** → logged as events through the standard `logging` module, wherever the host sends them

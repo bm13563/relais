@@ -17,7 +17,7 @@ from .executor import PipelineConfig, PipelineOrchestrator, StepExecutionResult
 from .conversation import Conversation, register as _register_conversation
 from .logging_config import get_logger
 
-log = get_logger('pipeline')
+log = get_logger("relais.pipeline")
 
 
 class Pipeline:

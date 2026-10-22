@@ -2,7 +2,8 @@
 
 Records each run and its per-step results so they can be inspected after the
 fact (get_run / list_runs). Runs execute start-to-finish in one process; there
-is no pause/resume. Step-level detail is logged to spool, not stored here.
+is no pause/resume. Step-level detail is logged (relais.logging_config), not
+stored here.
 
 Also keeps the api engine's transcripts: the Messages API messages an agent has
 accumulated, saved after every step under a transcript id — the continuity

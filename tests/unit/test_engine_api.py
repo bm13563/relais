@@ -769,7 +769,8 @@ class TestTranscript:
         assert outcome.is_error is False
         assert stub.messages.requests[0]["messages"] == [{"role": "user", "content": "Hi."}]
         assert state.load_transcript("gone")[0][0] == {"role": "user", "content": "Hi."}
-        assert log.info.call_args.args == ("transcript gone not found: beginning afresh",)
+        assert log.info.call_args.args == ("transcript_afresh",)
+        assert log.info.call_args.kwargs["transcript"] == "gone" and log.info.call_args.kwargs["why"] == "not found"
 
     @pytest.mark.parametrize("changed", [
         {"tools": ["lookup", "classify", "screenshot"]},  # a tool added to the agent
@@ -789,7 +790,9 @@ class TestTranscript:
         messages, new_prefix = state.load_transcript(first.session_id)
         assert messages[0] == {"role": "user", "content": "After."}
         assert new_prefix != old_prefix
-        assert log.info.call_args.args == (f"transcript {first.session_id} prefix changed: beginning afresh",)
+        assert log.info.call_args.args == ("transcript_afresh",)
+        assert log.info.call_args.kwargs["transcript"] == first.session_id
+        assert log.info.call_args.kwargs["why"] == "prefix changed"
 
     async def test_the_prefix_ignores_thinking_and_effort(self, stub, state, registry):
         """Request settings outside system / tools / model don't bind thinking."""

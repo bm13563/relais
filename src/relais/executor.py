@@ -11,8 +11,8 @@ the answer is a StepError, routing picks the next step, the result is persisted.
 Each agent keeps its engine state (a CLI client, a transcript) for the whole
 pipeline run, so its conversation context carries across its steps. A run
 executes start-to-finish in one process; results are persisted to SQLite for
-after-the-fact inspection. Step-level detail is logged to spool as structured
-events (see `spool` — query the JSONL stream to debug a run).
+after-the-fact inspection. Step-level detail is logged as events through the
+standard `logging` module (relais.logging_config), wherever the host sends it.
 """
 
 from __future__ import annotations
@@ -341,8 +341,8 @@ class PipelineOrchestrator:
                 tools=tool_names(step.tools), max_turns=agent.max_turns, model=agent.model or "opus",
                 engine=agent.engine,
             )
-            # DEBUG ONLY (spool writes info and up by default): the whole prompt, which
-            # is the host's content — never raise relais's logger to debug in production.
+            # DEBUG ONLY: the whole prompt, which is the host's content — a host ships
+            # INFO and up to its log store; never raise "relais" to DEBUG in production.
             self.log.debug("step_context", run=run_id, step=current_step_name, context=context)
 
             await self._emit({"type": "step_start", "run": run_id, "step": current_step_name, "agent": agent_name})
@@ -423,6 +423,7 @@ class PipelineOrchestrator:
             agent=agent, step=step, prompt=context, images=images or [],
             registry=self.tool_registry, emit=self._on_event, verbose=self._verbose,
         )
+        # DEBUG ONLY: a tool's input is the model's words — the host's content.
         for call in outcome.tool_calls:
             self.log.debug("tool_call", step=step.name, tool=call["tool"], input=call["input"])
 

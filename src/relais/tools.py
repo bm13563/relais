@@ -29,7 +29,7 @@ from typing import (
 
 from .logging_config import get_logger
 
-log = get_logger('tools')
+log = get_logger("relais.tools")
 
 
 @dataclass
@@ -377,7 +377,7 @@ class ToolRegistry:
         self._current_step_name: Optional[str] = None
         self._current_allowed_tools: set = set()
         self._tool_results: List[tuple] = []  # [(tool_name, result), ...]
-        log.info(f"Created tool registry: {name}")
+        log.debug("registry_created", registry=name)
 
     def tool(
         self,
@@ -437,7 +437,7 @@ class ToolRegistry:
 
         # Skip if already registered
         if name in self._tools:
-            log.debug(f"Tool '{name}' already registered, skipping")
+            log.debug("tool_already_registered", tool=name)
             return name
 
         self._register(name, description, schema, func)
@@ -446,8 +446,7 @@ class ToolRegistry:
     def _register(self, name: str, description: str, schema: dict, func: Callable) -> ToolDefinition:
         """Wrap a tool function (dict args → keyword arguments, per-step access
         check, result capture) and store its definition."""
-        log.info(f"Registering tool: {name}")
-        log.debug(f"Tool schema: {schema}")
+        log.debug("tool_registered", tool=name, schema=schema)
         definition = ToolDefinition(
             name=name,
             description=description,
@@ -475,7 +474,7 @@ class ToolRegistry:
         self._current_step_name = step_name
         self._current_allowed_tools = set(tool_names(allowed_tools))
         self._tool_results = []
-        log.debug(f"Set current step: {step_name}, allowed tools: {self._current_allowed_tools}")
+        log.debug("step_tools", step=step_name, allowed=sorted(self._current_allowed_tools))
 
     def is_tool_allowed(self, tool_name: str) -> bool:
         """Check if a tool is allowed in the current step.

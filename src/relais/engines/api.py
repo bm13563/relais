@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     from ..state import SQLiteStateManager
     from ..step import PipelineStep
 
-log = get_logger("relais")
+log = get_logger("relais.engines.api")
 
 
 # The system prompt of every request. Frozen — it heads the cached prefix, and a
@@ -144,7 +144,7 @@ class ApiEngine:
         saved = self.state_manager.load_transcript(agent.resume)
         if saved is None or saved[1] != prefix:
             why = "not found" if saved is None else "prefix changed"
-            log.info(f"transcript {agent.resume} {why}: beginning afresh", agent=agent.name, transcript=agent.resume)
+            log.info("transcript_afresh", agent=agent.name, transcript=agent.resume, why=why)
             return Transcript(id=agent.resume, prefix=prefix)
         return Transcript(id=agent.resume, prefix=prefix, messages=saved[0])
 

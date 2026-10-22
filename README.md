@@ -18,7 +18,7 @@ was granted and does exactly one thing before handing off. It enables you to:
 - Inject dynamic context via hooks (sync or async)
 - Isolate steps onto separate agents (separate clients, separate context) or share
   one agent across steps
-- Persist run results to SQLite and log structured step events to spool
+- Persist run results to SQLite and log structured step events through Python's standard `logging`
 
 ### Core model
 
@@ -186,15 +186,28 @@ to `draft`, the expired instance is retired and a **fresh** worker (clean contex
 takes the retry. Size `N` to a loop body to reset on each loop-back; use a large
 `N` (or `None`) for a refinement loop that should *remember* prior attempts.
 
-### Logging & debugging (spool)
+### Logging & debugging
 
 A run executes start-to-finish in one process. Instead of a pause/resume debug
-mode, relais logs structured step events to [spool](https://github.com/bm13563/spool):
-each pipeline writes its own queryable JSONL stream
-(`~/.local/share/tdl-crypto/logs/relais.<pipeline>.jsonl`) with events like
-`run_started`, `step_start` (including the full context), `step_done` (turns,
-routing data, next step), and `run_completed`. After a run, inspect results via
-`pipeline.get_run(run_id)` and trace what happened with the spool TUI or reader API.
+mode, relais logs structured step events through Python's standard `logging`,
+under the `relais` logger (`relais.pipeline`, `relais.tools`, `relais.<pipeline>`):
+`run_started`, `step_start`, `route`, `step_done` (turns, stop reason, next step,
+token usage, the output's keys) and `run_completed`. relais configures no handler of
+its own — `relais` carries a `NullHandler` — so its lines go wherever your
+application's logging sends them; with nothing configured you see only warnings
+and errors. To watch runs:
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO)   # or set "relais" to INFO under your own handlers
+```
+
+Each message reads `step_done run=… step=analyze turns=3 …`; the fields also ride
+the record as `record.relais` (a dict), for a handler that writes structured logs.
+INFO and above carry no content — names, ids, counts, usage. The two DEBUG events
+`step_context` (the whole prompt) and `tool_call` (a tool's input) do, so keep
+`relais` above DEBUG in production. After a run, inspect results with
+`pipeline.get_run(run_id)`.
 
 ### Tool Gating (defined, not recommended)
 
@@ -377,7 +390,7 @@ relais/
 │   ├── engines/         # sdk.py (Claude Agent SDK), api.py (Messages API)
 │   ├── tools.py         # Tool registry, @tool decorator, per-step gating
 │   ├── state.py         # SQLite persistence for pipeline runs and transcripts
-│   ├── logging_config.py # spool logging setup
+│   ├── logging_config.py # events through the standard logging module
 │   └── utils.py         # Utilities
 ├── examples/
 │   ├── pipelines/       # Example pipeline scripts
