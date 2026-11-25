@@ -30,7 +30,7 @@ async def test_inline_instruction_text_is_used_instead_of_a_file():
 async def test_astream_yields_the_run_events_then_run_done():
     orchestrator = _orchestrator()
 
-    async def fake_run(pipeline_name, initial_input, args=None):
+    async def fake_run(pipeline_name, initial_input, args=None, images=None):
         await orchestrator._emit({"type": "text_delta", "step": "s", "text": "Hel"})
         await orchestrator._emit({"type": "tool_use", "step": "s", "name": "t", "input": {}})
         return "run-1"
@@ -58,7 +58,7 @@ async def test_astream_yields_the_run_events_then_run_done():
 async def test_astream_raises_the_runs_error():
     orchestrator = _orchestrator()
 
-    async def failing_run(pipeline_name, initial_input, args=None):
+    async def failing_run(pipeline_name, initial_input, args=None, images=None):
         raise RuntimeError("boom")
 
     orchestrator.start_pipeline_async = failing_run

@@ -266,8 +266,9 @@ class Pipeline:
             args=args,
         )
 
-    async def astream(self, initial_input: str, args: dict = None):
-        """Run the pipeline and yield its events as they happen.
+    async def astream(self, initial_input: str, args: dict = None, images: list = None):
+        """Run the pipeline and yield its events as they happen. `images` (base64
+        PNGs) ride with the first step as image blocks (vision input).
 
         The streaming twin of arun(), for a host that shows the work live (a
         chat surface). Yields dicts, in order:
@@ -305,6 +306,7 @@ class Pipeline:
             try:
                 run_id = await self.orchestrator.start_pipeline_async(
                     pipeline_name=self.name, initial_input=initial_input, args=args,
+                    images=images,
                 )
                 state = self.get_run(run_id)
                 final = state.step_results.get(state.current_step) or {}

@@ -180,11 +180,13 @@ class PipelineOrchestrator:
         pipeline_name: str,
         initial_input: str,
         args: dict = None,
+        images: list = None,
     ) -> str:
         """The async twin of start_pipeline: awaits the run inside the CALLER's
         event loop (an async web framework, an async job worker). Every engine
         client the run opens lives and dies within this one awaiting task, which
-        is what the anyio cancel-scope rule needs. Returns the run ID."""
+        is what the anyio cancel-scope rule needs. `images` (base64 PNGs) ride
+        with the first step as image blocks. Returns the run ID."""
         config = self.pipelines.get(pipeline_name)
         if not config:
             raise ValueError(f"Unknown pipeline: {pipeline_name}")
@@ -203,7 +205,9 @@ class PipelineOrchestrator:
         )
 
         try:
-            await self._execute_pipeline(run_id, config, initial_input, args=run_args)
+            await self._execute_pipeline(
+                run_id, config, initial_input, args=run_args, images=images,
+            )
         except Exception as e:
             self.log.error("run_failed", run=run_id, pipeline=pipeline_name, error=str(e))
             self.state_manager.complete_pipeline(run_id, status='failed')
@@ -217,6 +221,7 @@ class PipelineOrchestrator:
         config: PipelineConfig,
         initial_input: str,
         args: dict = None,
+        images: list = None,
     ) -> None:
         """Run a pipeline start-to-finish in one process (fire-and-forget).
 
@@ -228,7 +233,7 @@ class PipelineOrchestrator:
         try:
             await self._run_segment(
                 run_id, config, config.start_step, initial_input, args,
-                run_agents, conversational=False,
+                run_agents, conversational=False, step_images=images,
             )
             self.state_manager.complete_pipeline(run_id)
             self.log.info("run_completed", run=run_id, pipeline=config.name)
